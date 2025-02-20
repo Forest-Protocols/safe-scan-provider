@@ -1,6 +1,6 @@
 # Create a new Protocol
 
-Forest Protocols consists of a multitude of Protocols (aka Product Categories) that are incentivized to accelerate digital innovation and prove their worth to the users by building in-demand services. Every digital service can become a Protocol within Forest Protocols. The diversity of Protocols together with Protocol's inherent interoperability is what adds up to its strength.
+Forest Network consists of a multitude of Protocols (aka Product Categories) that are incentivized to accelerate digital innovation and prove their worth to the users by building in-demand services. Every digital service can become a Protocol within Forest Network. The diversity of Protocols together with Protocol's inherent interoperability is what adds up to its strength.
 
 The Protocol is permissionless and everyone is allowed to create a new Protocol.
 
@@ -15,15 +15,19 @@ This repository contains instructions and code templates for innovators who want
 
 ## Quickstart
 
-As a Protocol Owner you want to make life easy on Providers that will be adding offers to your PC and servicing clients. That's why you need to create a Provider Template that each Provider will be running to cater to its clients. We have already implemented all of the Protocol level functionality. The only thing you need to do is to define the Protocol specific code.
+As a Protocol Owner you want to make life easy on Providers that will be adding offers to your PROT and servicing clients. That's why you need to create a Provider Template that each Provider will be running to cater to its clients. We have already implemented all of the Protocol level functionality. The only thing you need to do is to define the Protocol specific code.
 
 ### 1. Fork and edit the repository
 
 Fork this repository and clone it locally. Open the `src/product-category/base-provider.ts` file. The first step is to define the details each resource will have. At the beginning of the file, there is a type definition named `ExampleProductDetails`, which specifies the attributes stored in the daemon's database for each resource in this Protocol.
 
+<!--- Should we rename ExampleProductDetails to ExampleResourceDetails?  At the end of the sentence we explicitly mentione that this is for each resource in this Protocol?-->
+
 Details of a resource are most likely the data that would be useful for the Users to see or the configuration that has to be used internally in order to handle the resource. They can be accessible by Users unless you prefix the detail name with `_`. For instance, these details might include connection strings for a Database resource or endpoints and API keys for an API service resource.
 
 Rename the type to match your product and edit the fields accordingly. An example type definition for the SQLite Protocol is shown below:
+
+<!--- match your product - should this part also to be replaced as "match your resource" ?  -->
 
 ```typescript
 export type SQLiteDatabaseDetails = ResourceDetails & {
@@ -36,6 +40,8 @@ export type SQLiteDatabaseDetails = ResourceDetails & {
 ```
 
 Once you have defined the details type, update the `BaseExampleProductProvider` abstract class to define this product's supported methods / functionality. This is a set of actions that Users can request your Providers to complete if they have an active Agreement for a service in your PC. All Providers within this Protocol must implement all functions you define in this class. Rename the class to reflect your product. For example:
+
+<!--- BaseExampleProductProvider - should this part also to be replaced as "BaseExampleProtocolProvider or BaseExampleResourceProvider" ?  -->
 
 ```typescript
 export abstract class BaseSQLiteDatabaseProvider extends AbstractProvider<SQLiteDatabaseDetails> {
@@ -318,18 +324,18 @@ forest product-category create \
 
 #### Explanation of Command Flags
 
-| Flag                       | Description                                                      |
-| -------------------------- | ---------------------------------------------------------------- |
-| `--max-validator`          | Maximum number of Validators that can be registered.             |
-| `--max-provider`           | Maximum number of Providers that can be registered.              |
-| `--min-collateral`         | Minimum FOREST token collateral required for a registration.     |
-| `--validator-register-fee` | Registration fee (FOREST token) for Validators.                  |
-| `--provider-register-fee`  | Registration fee (FOREST token) for Providers.                   |
-| `--offer-register-fee`     | Fee for Providers to register a new Offer.                       |
-| `--term-update-delay`      | Minimum block count before Providers can close agreements.       |
-| `--provider-share`         | Percentage of emissions allocated to Providers.                  |
-| `--validator-share`        | Percentage of emissions allocated to Validators.                 |
-| `--pco-share`              | Percentage of emissions allocated to the Protocol Owner. |
+| Flag                       | Description                                                  |
+| -------------------------- | ------------------------------------------------------------ |
+| `--max-validator`          | Maximum number of Validators that can be registered.         |
+| `--max-provider`           | Maximum number of Providers that can be registered.          |
+| `--min-collateral`         | Minimum FOREST token collateral required for a registration. |
+| `--validator-register-fee` | Registration fee (FOREST token) for Validators.              |
+| `--provider-register-fee`  | Registration fee (FOREST token) for Providers.               |
+| `--offer-register-fee`     | Fee for Providers to register a new Offer.                   |
+| `--term-update-delay`      | Minimum block count before Providers can close agreements.   |
+| `--provider-share`         | Percentage of emissions allocated to Providers.              |
+| `--validator-share`        | Percentage of emissions allocated to Validators.             |
+| `--pco-share`              | Percentage of emissions allocated to the Protocol Owner.     |
 
 ### 3. Prepare the README file for Users and Providers
 

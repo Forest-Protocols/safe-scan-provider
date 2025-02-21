@@ -1,17 +1,17 @@
 {
   "name": "provider-template",
   "version": "0.0.1",
-  "description": "Base provider template for new product categories",
-  "homepage": "https://github.com/dbForest/provider-template#readme",
+  "description": "Base Provider template for new Protocols",
+  "homepage": "https://github.com/Forest-Protocols/provider-template#readme",
   "bugs": {
-    "url": "https://github.com/dbForest/provider-template/issues"
+    "url": "https://github.com/Forest-Protocols/provider-template/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dbForest/provider-template.git"
+    "url": "git+https://github.com/Forest-Protocols/provider-template.git"
   },
   "license": "MIT",
-  "author": "Forest Protocols Development Team",
+  "author": "Forest Network Development Team",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

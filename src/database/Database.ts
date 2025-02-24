@@ -238,9 +238,23 @@ class Database {
    * @param blockHeight
    */
   async saveTransaction(blockHeight: bigint, hash: string) {
-    await this.client.insert(schema.blockchainTxsTable).values({
-      height: blockHeight,
-      hash,
+    await this.client.transaction(async (tx) => {
+      const [transaction] = await tx
+        .select()
+        .from(schema.blockchainTxsTable)
+        .where(
+          and(
+            eq(schema.blockchainTxsTable.height, blockHeight),
+            eq(schema.blockchainTxsTable.hash, hash)
+          )
+        );
+
+      if (transaction) return;
+
+      await this.client.insert(schema.blockchainTxsTable).values({
+        height: blockHeight,
+        hash,
+      });
     });
   }
 

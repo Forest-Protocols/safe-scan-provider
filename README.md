@@ -150,7 +150,7 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
 
 #### 2.1 Register as a Protocol Owner
 
-All Actors such as Protocol Owners, Providers and Validators need to register in the Protocol and pay the registration fee before they can start any type of interactions.
+All Actors such as Protocol Owners, Providers and Validators need to register in the Network and pay the registration fee before they can start any type of interactions.
 
 **TESTNET NOTE**: if you need testnet tokens reach out to the Forest Network team on [Discord](https://discord.gg/8F8V8gEgua).
 

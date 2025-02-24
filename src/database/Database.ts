@@ -196,7 +196,6 @@ class Database {
     const [lastBlock] = await this.client
       .select()
       .from(schema.blockchainTxsTable)
-      .orderBy(desc(schema.blockchainTxsTable.height))
       .limit(1);
 
     return lastBlock?.height;
@@ -238,26 +237,20 @@ class Database {
    * Saves a transaction as processed
    * @param blockHeight
    */
-  async saveTxAsProcessed(blockHeight: bigint, hash: string) {
-    await this.client.transaction(async (tx) => {
-      const [transaction] = await tx
-        .select()
-        .from(schema.blockchainTxsTable)
-        .where(eq(schema.blockchainTxsTable.height, blockHeight));
-
-      if (!transaction) {
-        await tx.insert(schema.blockchainTxsTable).values({
-          height: blockHeight,
-          isProcessed: true,
-          hash,
-        });
-      } else if (transaction.isProcessed === false) {
-        await tx
-          .update(schema.blockchainTxsTable)
-          .set({ isProcessed: true })
-          .where(eq(schema.blockchainTxsTable.height, blockHeight));
-      }
+  async saveTransaction(blockHeight: bigint, hash: string) {
+    await this.client.insert(schema.blockchainTxsTable).values({
+      height: blockHeight,
+      hash,
     });
+  }
+
+  /**
+   * Deletes all of the records that belongs to a particular block height
+   */
+  async clearBlocks(blockHeight: bigint) {
+    await this.client
+      .delete(schema.blockchainTxsTable)
+      .where(eq(schema.blockchainTxsTable.height, blockHeight));
   }
 
   async saveDetailFiles(contents: string[]) {

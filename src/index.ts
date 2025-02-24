@@ -312,7 +312,7 @@ class Program {
             currentBlockNumber
           )}, skipping...`
         );
-        await DB.saveTxAsProcessed(currentBlockNumber, "");
+        await DB.saveTransaction(currentBlockNumber, "");
         currentBlockNumber++;
         continue;
       }
@@ -335,7 +335,7 @@ class Program {
 
         const txRecord = await DB.getTransaction(tx.blockNumber, tx.hash);
 
-        if (txRecord?.isProcessed) {
+        if (txRecord) {
           logger.info(
             `TX (${colorHex(tx.hash)}) is already processed, skipping...`
           );
@@ -370,7 +370,7 @@ class Program {
                   event.eventName
                 )} event. Skipping...`
               );
-              await DB.saveTxAsProcessed(
+              await DB.saveTransaction(
                 event.blockNumber,
                 event.transactionHash
               );
@@ -400,16 +400,16 @@ class Program {
             }
 
             // Save the TX as processed
-            await DB.saveTxAsProcessed(
-              event.blockNumber,
-              event.transactionHash
-            );
+            await DB.saveTransaction(event.blockNumber, event.transactionHash);
           }
         }
       }
 
       // Empty hash means block itself, so this block is completely processed
-      await DB.saveTxAsProcessed(currentBlockNumber, "");
+      await DB.saveTransaction(currentBlockNumber, "");
+
+      // Clear all of the data that belongs to the previous block because we have a new "last processed block"
+      await DB.clearBlocks(currentBlockNumber - 1n);
       currentBlockNumber++;
     }
   }

@@ -71,7 +71,6 @@ export const blockchainTxsTable = pgTable(
   {
     height: bigint({ mode: "bigint" }).notNull(),
     hash: varchar({ length: 70 }).notNull(),
-    isProcessed: boolean("is_processed").notNull(),
   },
   (table) => [
     primaryKey({

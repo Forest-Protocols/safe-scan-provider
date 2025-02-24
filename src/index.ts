@@ -23,6 +23,8 @@ import { join } from "path";
 import { readdirSync, readFileSync, statSync } from "fs";
 import { tryParseJSON } from "./utils";
 import { DetailedOffer } from "./types";
+import express from "express";
+import { config } from "./config";
 
 async function sleep(ms: number) {
   return await new Promise((res) => setTimeout(res, ms));
@@ -48,6 +50,14 @@ class Program {
   constructor() {}
 
   async init() {
+    // Start a healthcheck HTTP server
+    const app = express();
+    app.get("/health", (_, res) => {
+      res.send("Running");
+    });
+
+    app.listen(config.PORT);
+
     // Load detail files into the database
     logger.info("Detail files are loading to the database");
     const basePath = join(process.cwd(), "data/details");

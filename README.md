@@ -171,7 +171,7 @@ All Actors such as Protocol Owners, Providers and Validators need to register in
    > If you are planning to use different accounts for billing and operating, you need to pass additional flags: `--billing <address>` and `--operator <address>`. This separation increases security of your configuration. Setting a billing address allows for having a separate address / identity for claiming your earnings and rewards while setting an operator allows you to delegate the operational work of running a daemon and servicing user requests to a third-party or a hotkey. If you don't need that, just skip those flags and the logic of the Protocol will use your main address as your billing and operator address.
 6. Run the following command:
    ```sh
-    forest register pco \
+    forest register pto \
         --details <JSON file name - (Detailed information about the Actor)> \
         --account <Private key of the caller's wallet>
    ```

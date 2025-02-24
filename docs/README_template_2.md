@@ -8,11 +8,11 @@ Describe the goal of this network.
 
 | Name                      | Value                      |
 | ------------------------- | -------------------------- |
-| PC Smart Contract Address | `{Smart Contract Address}` |
-| PC Registration Date      | `{Date of registration}`   |
-| PC Details File CID       | `{CID}`                    |
-| PC Owner Wallet Address   | `{Public Wallet Address}`  |
-| PC Owner Details File CID | `{CID}`                    |
+| PT Smart Contract Address | `{Smart Contract Address}` |
+| PT Registration Date      | `{Date of registration}`   |
+| PT Details File CID       | `{CID}`                    |
+| PT Owner Wallet Address   | `{Public Wallet Address}`  |
+| PT Owner Details File CID | `{CID}`                    |
 
 ## Evaluation
 
@@ -31,7 +31,7 @@ How will validators score AI models provided. It should be described in high lev
 
 - **Params**:
   - `id` (number, optional): Id of the resource for which to fetch information
-  - `pc` (Address, optional): PC address where the resource of interest lives
+  - `pc` (Address, optional): PT address where the resource of interest lives
 - **Returns**:
   - `Resource[] | Resource`: If `id` and `pc` is given, retrieves one resource information. Otherwise returns all resources of the requester
 
@@ -58,6 +58,6 @@ Give an exact example of input
 
 And exact example of output
 
-## Become a Provider in this Product Category
+## Become a Provider in this Protocol
 
-If you want to start providing services in this Product Category follow this tutorial: [link](become-a-provider.md)
+If you want to start providing services in this Protol follow this tutorial: [link](become-a-provider.md)

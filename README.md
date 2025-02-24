@@ -1,6 +1,6 @@
 # Create a new Protocol
 
-Forest Network consists of a multitude of Protocols  that are incentivized to accelerate digital innovation and prove their worth to the users by building in-demand services. Every digital service can become a Protocol within Forest Network. The diversity of Protocols together with Protocol's inherent interoperability is what adds up to its strength.
+Forest Network consists of a multitude of Protocols that are incentivized to accelerate digital innovation and prove their worth to the users by building in-demand services. Every digital service can become a Protocol within Forest Network. The diversity of Protocols together with Protocol's inherent interoperability is what adds up to its strength.
 
 The Protocol is permissionless and everyone is allowed to create a new Protocol.
 
@@ -8,14 +8,14 @@ This repository contains instructions and code templates for innovators who want
 
 1. [Fork and edit the repository](#1-fork-and-edit-the-repository),
 2. [Registering in the Protocol](#2-registering-in-the-protocol),
-   1. [Register as a Protocol Owner](#21-register-as-a-product-category-owner),
-   2. [Register a New Protocol](#22-register-a-new-product-category),
+   1. [Register as a Protocol Owner](#21-register-as-a-protocol-owner),
+   2. [Register a New Protocol](#22-register-a-new-protocol),
 3. [Prepare the README file for Users and Providers](#3-prepare-the-readme-file-for-users-and-providers).
-4. [Grow Your Protocol by Onboarding Providers, Validators and Users](#4-grow-your-product-category).
+4. [Grow Your Protocol by Onboarding Providers, Validators and Users](#4-grow-your-protocol).
 
 ## Quickstart
 
-As a Protocol Owner you want to make life easy on Providers that will be adding offers to your PROT and servicing clients. That's why you need to create a Provider Template that each Provider will be running to cater to its clients. We have already implemented all of the Protocol level functionality. The only thing you need to do is to define the Protocol specific code.
+As a Protocol Owner you want to make life easy for Providers that will be adding offers to your Protocol and servicing clients. That's why you need to create a Provider Template that each Provider will be running to deliver to its clients. We have already implemented all of the Protocol level functionality. The only thing you need to do is to define the Protocol specific code.
 
 ### 1. Fork and edit the repository
 
@@ -23,7 +23,7 @@ Fork this repository and clone it locally. Open the `src/protocol/base-provider.
 
 Details of a resource are most likely the data that would be useful for the Users to see or the configuration that has to be used internally in order to handle the resource. They can be accessible by Users unless you prefix the detail name with `_`. For instance, these details might include connection strings for a Database resource or endpoints and API keys for an API service resource.
 
-Rename the type to match your product and edit the fields accordingly. An example type definition for the SQLite Protocol is shown below:
+Rename the type to match your service and edit the fields accordingly. An example type definition for the SQLite Protocol is shown below:
 
 ```typescript
 export type SQLiteDatabaseResourceDetails = ResourceDetails & {
@@ -35,7 +35,7 @@ export type SQLiteDatabaseResourceDetails = ResourceDetails & {
 };
 ```
 
-Once you have defined the details type, update the `BaseExampleServiceProvider` abstract class to define this protocol's supported methods / functionality. This is a set of actions that Users can request your Providers to complete if they have an active Agreement for a service in your PT. All Providers within this Protocol must implement all functions you define in this class. Rename the class to reflect your product. For example:
+Once you have defined the details type, update the `BaseExampleServiceProvider` abstract class to define this protocol's supported methods / functionality. This is a set of actions that Users can request your Providers to complete if they have an active Agreement for a service in your PT. All Providers within this Protocol must implement all functions you define in this class. Rename the class to reflect your service. For example:
 
 ```typescript
 export abstract class BaseSQLiteDatabaseServiceProvider extends AbstractServiceProvider<SQLiteDatabaseResourceDetails> {
@@ -172,8 +172,8 @@ All Actors such as Protocol Owners, Providers and Validators need to register in
 6. Run the following command:
    ```sh
     forest register pco \
-        --details <JSON file name> \
-        --account <private key file>
+        --details <JSON file name - (Detailed information about the Actor)> \
+        --account <Private key of the caller's wallet>
    ```
 7. Save your detail file into `data/details` folder.
 
@@ -224,7 +224,7 @@ type ProtocolDetails = {
   /* Version of the Service that is going to be served in this Protocol */
   version?: string;
 
-  /* The parameters that each Offer which registered in this PT has to include */
+  /* The parameters that each Offer which registered in this Protocol has to include */
   offerParams: {
     /* Visible name of the parameter */
     name: string;
@@ -301,7 +301,7 @@ An example JSON file based on these type definitions:
 2. Save it at `data/details/[file name]` in your forked Provider Template repository.
 
 ```sh
-forest product-category create \
+forest protocol create \
   --details <details file path> \
   --account <private key file path OR private key itself of the PTO account> \
   --max-validator 10 \
@@ -335,7 +335,7 @@ forest product-category create \
 
 Now you need to create a human-readable specification of your Protocol. You have total freedom to shape this document in a way you think is best. However we provide two templates for inspiration (`README_template_1.md`: [here](./docs/README_template_1.md)) and (`README_template_2.md`: [here](./docs/README_template_2.md)). Rename the chosen file to `README.md` (this will override this, but that's fine).
 
-From now on the `README.md` will include basic information about your PT that might be interesting to Users. It also links to a Provider tutorial on how to easily integrate with your Protocol. So the last thing you need to do is customize the information by filling out the missing parts in your PC's `README.md` as well as in the `README_Become_a_Provider.md`.
+From now on the `README.md` will include basic information about your Protocol that might be interesting to Users. It also links to a Provider tutorial on how to easily integrate with your Protocol. So the last thing you need to do is customize the information by filling out the missing parts in your PT's `README.md` as well as in the `README_Become_a_Provider.md`.
 
 ### 4. Grow Your Protocol
 

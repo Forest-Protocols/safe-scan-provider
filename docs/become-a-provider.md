@@ -2,7 +2,7 @@
 
 If you want to start providing services in this Protocol follow the steps below.
 
-1. [Register in the Protocol](#1-register-in-the-protocol),
+1. [Register in the Network](#1-register-in-the-network),
 2. [Register in this Protocol](#2-register-in-this-protocol),
 3. [Register Offers](#3-register-offers),
 4. [Fork and Implement This Repository](#4-fork-and-implement-this-repository),
@@ -19,7 +19,7 @@ Install [Node.js](https://nodejs.org) (min version 22.12.0) environment, Forest 
 - PostgreSQL [official](https://www.postgresql.org/download/) downloads page (if you want to run Postgres natively)
 - Docker [image](https://hub.docker.com/_/postgres) for PostgreSQL (if you want to run dockerized Postgres)
 
-#### 1. Register in the Protocol
+#### 1. Register in the Network
 
 > You can skip this part if you are already registered in the Protocol as a Provider.
 
@@ -60,7 +60,7 @@ forest provider register-in \
 
 #### 3. Register Offers
 
-Now that you are registered in the Protocol and this Protocol, the next step is to register your Offers.
+Now that you are registered in the Network and this Protocol, the next step is to register your Offers.
 
 First, create files that contain details for each Offer you plan to register. You have two options for these detail files:
 

@@ -1,13 +1,13 @@
 # Create a new Protocol
 
-Forest Network consists of a multitude of Protocols that are incentivized to accelerate digital innovation and prove their worth to the users by building in-demand services. Every digital service can become a Protocol within Forest Network. The diversity of Protocols together with Protocol's inherent interoperability is what adds up to its strength.
+Forest Network consists of a multitude of Protocols that are incentivized to accelerate digital innovation and prove their worth to the users by building in-demand services. Every digital service can become a Protocol within Forest Network. The diversity of Protocols together with Network's inherent interoperability is what adds up to its strength.
 
-The Protocol is permissionless and everyone is allowed to create a new Protocol.
+The Network is permissionless and everyone is allowed to create a new Protocol.
 
 This repository contains instructions and code templates for innovators who want to create their own Protocols, grow them and earn passive income. What is required of a potential Protocol Owner is to:
 
 1. [Fork and edit the repository](#1-fork-and-edit-the-repository),
-2. [Registering in the Protocol](#2-registering-in-the-protocol),
+2. [Registering in the Network](#2-registering-in-the-network),
    1. [Register as a Protocol Owner](#21-register-as-a-protocol-owner),
    2. [Register a New Protocol](#22-register-a-new-protocol),
 3. [Prepare the README file for Users and Providers](#3-prepare-the-readme-file-for-users-and-providers).
@@ -15,7 +15,7 @@ This repository contains instructions and code templates for innovators who want
 
 ## Quickstart
 
-As a Protocol Owner you want to make life easy for Providers that will be adding offers to your Protocol and servicing clients. That's why you need to create a Provider Template that each Provider will be running to deliver to its clients. We have already implemented all of the Protocol level functionality. The only thing you need to do is to define the Protocol specific code.
+As a Protocol Owner you want to make life easy for Providers that will be adding offers to your Protocol and servicing clients. That's why you need to create a Provider Template that each Provider will be running to deliver to its clients. We have already implemented all of the Network level functionality. The only thing you need to do is to define the Protocol specific code.
 
 ### 1. Fork and edit the repository
 
@@ -146,7 +146,7 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
 }
 ```
 
-### 2. Registering in the Protocol
+### 2. Registering in the Network
 
 #### 2.1 Register as a Protocol Owner
 

@@ -187,7 +187,7 @@ export abstract class AbstractProvider<
        */
       this.operatorRoute(PipeMethod.GET, "/resources", async (req) => {
         const params = validateBodyOrParams(
-          req.params,
+          req.body || req.params,
           z.object({
             /** ID of the resource. */
             id: z.number().optional(),

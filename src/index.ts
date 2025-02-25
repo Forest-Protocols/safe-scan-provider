@@ -3,7 +3,7 @@ import {
   Agreement,
   DeploymentStatus,
   Offer,
-  ProductCategoryABI as ProtocolABI,
+  ProtocolABI,
   Status,
 } from "@forest-protocols/sdk";
 import { Address, parseEventLogs } from "viem";

@@ -22,7 +22,7 @@ import {
   Agreement,
   PipeMethod,
   PipeResponseCode,
-  ProductCategory as Protocol,
+  Protocol,
   Registry,
   XMTPPipe,
 } from "@forest-protocols/sdk";
@@ -95,7 +95,7 @@ export abstract class AbstractProvider<
     // `DB.upsertProvider` already checked the existence of the details file
     this.details = tryParseJSON(provDetailFile.content);
 
-    const ptAddresses = await this.registry.getRegisteredPCsOfProvider(
+    const ptAddresses = await this.registry.getRegisteredPTsOfProvider(
       provider.id
     );
 

@@ -194,8 +194,14 @@ export abstract class AbstractProvider<
 
             /** Protocol address that the resource created in. */
             pt: addressSchema.optional(), // A pre-defined Zod schema for smart contract addresses.
+            pc: addressSchema.optional(), // Alternative name for `pt` parameter
           })
         );
+
+        // If `pc` alias is given, use it.
+        if (params.pc) {
+          params.pt = params.pc;
+        }
 
         // If not both of them are given, send all resources of the requester
         if (params.id === undefined || params.pt === undefined) {

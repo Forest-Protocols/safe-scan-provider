@@ -21,7 +21,7 @@ Install [Node.js](https://nodejs.org) (min version 22.12.0) environment, Forest 
 
 #### 1. Register in the Network
 
-> You can skip this part if you are already registered in the Protocol as a Provider.
+> You can skip this part if you are already registered in the Network as a Provider.
 
 1. Create a JSON detail file in the following schema and save it somewhere:
 

@@ -2,7 +2,7 @@
 
 ## Description
 
-`{Describe the goal of this network}`
+`{Describe the goal of this Protocol}`
 
 ## Basic Info
 

@@ -33,7 +33,7 @@ How will validators score AI models provided. It should be described in high lev
   - `id` (number, optional): Id of the resource for which to fetch information
   - `pt` (Address, optional): PT address where the resource of interest lives
 - **Returns**:
-  - `Resource[] | Resource`: If `id` and `pc` is given, retrieves one resource information. Otherwise returns all resources of the requester
+  - `Resource[] | Resource`: If `id` and `pt` is given, retrieves one resource information. Otherwise returns all resources of the requester
 
 ### `actionNameSimilarToFunctionName()`
 

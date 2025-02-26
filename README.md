@@ -94,7 +94,7 @@ async init(providerTag: string) {
          */
         const body = validateBodyOrParams(req.body, z.object({
             id: z.number(), // Resource ID
-            pc: addressSchema, // Protocol address
+            pt: addressSchema, // Protocol address
             query: z.string(), // SQL query
         }));
 
@@ -110,7 +110,7 @@ async init(providerTag: string) {
          */
         const { resource } = await this.getResource(
           body.id,
-          body.pc as Address,
+          body.pt as Address,
           req.requester
         );
 

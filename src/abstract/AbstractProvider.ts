@@ -17,14 +17,12 @@ import {
   Provider,
   ProviderDetails,
   validateBodyOrParams,
-} from "@forest-protocols/sdk";
-import {
+  XMTPv3Pipe,
   Agreement,
   PipeMethod,
   PipeResponseCode,
   Protocol,
   Registry,
-  XMTPPipe,
 } from "@forest-protocols/sdk";
 import { yellow } from "ansis";
 import { readFileSync, statSync } from "fs";
@@ -109,7 +107,7 @@ export abstract class AbstractProvider<
 
     // Initialize pipe for this operator address if it is not instantiated yet.
     if (!pipes[this.actorInfo.operatorAddr]) {
-      pipes[this.actorInfo.operatorAddr] = new XMTPPipe(
+      pipes[this.actorInfo.operatorAddr] = new XMTPv3Pipe(
         providerConfig.operatorWalletPrivateKey
       );
       // Disable console.info to get rid out of "XMTP dev" warning

@@ -159,10 +159,7 @@ export abstract class AbstractProvider<
           }
         } catch (err: any) {
           this.logger.error(`Couldn't load OpenAPI spec file: ${err.message}`);
-          return {
-            code: PipeResponseCode.OK,
-            body: "",
-          };
+          throw new PipeErrorNotFound(`OpenAPI spec file`);
         }
 
         throw new PipeErrorNotFound(`OpenAPI spec file`);

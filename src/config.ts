@@ -3,6 +3,7 @@ import { cyan, red } from "ansis";
 import { readFileSync, statSync } from "fs";
 import { join } from "path";
 import {
+  addressSchema,
   ForestRegistryAddress,
   getContractAddressByChain,
   privateKeySchema,
@@ -21,6 +22,7 @@ function parseEnv() {
     CHAIN: z.enum(["anvil", "optimism", "optimism-sepolia"]).default("anvil"),
     PORT: z.coerce.number().default(3000),
     RATE_LIMIT: z.coerce.number().default(20),
+    REGISTRY_ADDRESS: addressSchema.optional(),
   });
   const parsedEnv = environmentSchema.safeParse(process.env, {});
 

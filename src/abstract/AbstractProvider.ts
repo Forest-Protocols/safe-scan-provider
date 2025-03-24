@@ -69,7 +69,11 @@ export abstract class AbstractProvider<
     );
 
     // Initialize clients
-    this.registry = Registry.createWithClient(rpcClient, this.account);
+    this.registry = new Registry({
+      client: rpcClient,
+      account: this.account,
+      address: config.REGISTRY_ADDRESS,
+    });
 
     this.logger.info("Checking in Network Actor registration");
     const provider = await this.registry.getActor(this.account.address);
@@ -98,11 +102,12 @@ export abstract class AbstractProvider<
     );
 
     for (const ptAddress of ptAddresses) {
-      this.protocols[ptAddress.toLowerCase()] = Protocol.createWithClient(
-        rpcClient,
-        ptAddress as Address,
-        this.account
-      );
+      this.protocols[ptAddress.toLowerCase()] = new Protocol({
+        address: ptAddress as Address,
+        client: rpcClient,
+        account: this.account,
+        registryContractAddress: config.REGISTRY_ADDRESS,
+      });
     }
 
     // Initialize pipe for this operator address if it is not instantiated yet.

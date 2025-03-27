@@ -393,6 +393,7 @@ class Program {
               )} received for provider ${colorHex(provider.account!.address)}`
             );
 
+try {
             if (event.eventName == "AgreementCreated") {
               await this.processAgreementCreated(
                 agreement,
@@ -406,6 +407,13 @@ class Program {
                 offer,
                 tx.to!,
                 provider
+);
+              }
+            } catch (err: any) {
+              logger.error(
+                ansis.red(
+                  `Error while processing the event: ${err?.stack || err}`
+                )
               );
             }
 

@@ -316,17 +316,6 @@ class Program {
         continue;
       }
 
-      if (block.transactions.length == 0) {
-        logger.info(
-          `No transactions found in block ${colorNumber(
-            currentBlockNumber
-          )}, skipping...`
-        );
-        await DB.saveTransaction(currentBlockNumber, "");
-        currentBlockNumber++;
-        continue;
-      }
-
       logger.info(`Processing block ${colorNumber(block.number)}`);
       for (const tx of block.transactions) {
         // If the TX is not belong to any of the Protocol contracts that we are listening, just skip it.
@@ -421,6 +410,14 @@ try {
             await DB.saveTransaction(event.blockNumber, event.transactionHash);
           }
         }
+      }
+
+      if (block.transactions.length == 0) {
+        logger.info(
+          `No transactions found in block ${colorNumber(
+            block.number
+          )}, skipping...`
+        );
       }
 
       // Empty hash means block itself, so this block is completely processed

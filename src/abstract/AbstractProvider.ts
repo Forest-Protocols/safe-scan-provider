@@ -27,7 +27,7 @@ import {
 import { yellow } from "ansis";
 import { readFileSync, statSync } from "fs";
 import { join } from "path";
-import { Account, Address } from "viem";
+import { Account, Address, nonceManager } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { z } from "zod";
 
@@ -65,7 +65,8 @@ export abstract class AbstractProvider<
 
     // Setup Provider account
     this.account = privateKeyToAccount(
-      providerConfig.providerWalletPrivateKey as Address
+      providerConfig.providerWalletPrivateKey as Address,
+      { nonceManager }
     );
 
     // Initialize clients

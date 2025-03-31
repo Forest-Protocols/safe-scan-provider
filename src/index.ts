@@ -99,9 +99,9 @@ class Program {
     // Delete duplicated addresses
     this.listenedPTAddresses = [...new Set(this.listenedPTAddresses)];
 
-    // Check agreement balances at startup then in every minute
+    // Check agreement balances at startup then in every 30 minute
     this.checkAgreementBalances();
-    setInterval(() => this.checkAgreementBalances(), 60 * 1000);
+    setInterval(() => this.checkAgreementBalances(), 30 * 60 * 1000);
   }
 
   async processAgreementCreated(

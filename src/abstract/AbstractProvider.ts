@@ -132,17 +132,11 @@ export abstract class AbstractProvider<
       pipes[this.actorInfo.operatorAddr] = new XMTPv3Pipe(
         providerConfig.operatorWalletPrivateKey
       );
-      // Disable console.info to get rid out of "XMTP dev" warning
-      const consoleInfo = console.info;
-      console.info = () => {};
 
       // Use dev env only for local and sepolia chains
       await pipes[this.actorInfo.operatorAddr].init(
         config.CHAIN === "optimism" ? "production" : "dev"
       );
-
-      // Revert back console.info
-      console.info = consoleInfo;
 
       this.logger.info(
         `Initialized Pipe for operator ${yellow.bold(

@@ -131,7 +131,16 @@ export abstract class AbstractProvider<
     if (!pipes[this.actorInfo.operatorAddr]) {
       pipes[this.actorInfo.operatorAddr] = new XMTPv3Pipe(
         providerConfig.operatorWalletPrivateKey,
-        { revokeOtherInstallations: true }
+        {
+          dbPath: join(
+            process.cwd(),
+            "data",
+            `db-${this.actorInfo.operatorAddr}.db`
+          ),
+
+          // Doesn't matter what it is as long as it is something that we can use in the next client initialization
+          encryptionKey: this.actorInfo.operatorAddr,
+        }
       );
 
       // Use dev env only for local and sepolia chains

@@ -1,18 +1,18 @@
 # Become a Provider in this Protocol
 
-If you want to start providing services in this Protocol follow the steps below.
+If you want to start providing services in this Protocol, follow the steps below.
 
-1. [Register in the Network](#1-register-in-the-network),
-2. [Register in this Protocol](#2-register-in-this-protocol),
-3. [Register Offers](#3-register-offers),
-4. [Fork and Implement This Repository](#4-fork-and-implement-this-repository),
-5. [Run the Provider Daemon](#5-run-the-provider-daemon).
+1. [Register in the Network](#1-register-in-the-network)
+2. [Register in this Protocol](#2-register-in-this-protocol)
+3. [Register Offers](#3-register-offers)
+4. [Fork and Implement This Repository](#4-fork-and-implement-this-repository)
+5. [Run the Provider Daemon](#5-run-the-provider-daemon)
 
 ### Step-by-step instructions
 
 #### Prerequisites
 
-Install [Node.js](https://nodejs.org) (min version 22.12.0) environment, Forest Protocols [CLI](https://github.com/Forest-Protocols/forest-cli) tool and a functional PostgreSQL (min version 16) database for the daemon. To install that environment, you can check the links below;
+Install a [Node.js](https://nodejs.org) (min version 22.12.0) environment, the Forest Protocols [CLI](https://github.com/Forest-Protocols/forest-cli) tool and a functional PostgreSQL (min version 16) database for the daemon. To install that environment, you can check the links below:
 
 - Node.js [official](https://nodejs.org/en/download) downloads page
 - [nvm](https://github.com/nvm-sh/nvm) - Node Version Manager, helps to manage multiple Node versions at the same time.
@@ -62,7 +62,7 @@ forest provider register-in \
 
 Now that you are registered in the Network and this Protocol, the next step is to register your Offers.
 
-First, create files that contain details for each Offer you plan to register. You have two options for these detail files:
+First, create files that contain details for each Offer you plan to register. You have two options for these details files:
 
 - Create a plain text or Markdown file with human-readable Offer details. This approach does not allow parameterization of Offers. Also these details won't be visible in the CLI. However this approach is often good enough for a number of use cases like API access.
 - Create a JSON file following the schema below. This approach makes Offer details visible and filterable in the CLI and the Marketplace while also allowing parameterization of resource creation.

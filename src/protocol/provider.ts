@@ -8,6 +8,7 @@ import { DetailedOffer, Resource } from "@/types";
 /**
  * The main class that implements provider specific actions.
  * @responsible Provider
+ * @implements {BaseExampleServiceProvider}
  */
 export class MainProviderImplementation extends BaseExampleServiceProvider {
   async doSomething(
@@ -16,7 +17,7 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
     additionalArgument: string
   ): Promise<{ stringResult: string; numberResult: number }> {
     /**
-     * TODO: Implement the logic to achieve purpose of this function.
+     * TODO: Implement the logic of this protocol-specific action.
      */
 
     // An example;
@@ -34,9 +35,11 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
     offer: DetailedOffer
   ): Promise<ExampleResourceDetails> {
     /**
-     * TODO: Implement how the resource will be created.
+     * TODO: Implement how the resource will be created. 
      */
-    // If there is no additional action need for creation, you can
+    // This is one of the network-wide actions. All Protocols and all Providers need to implement this.
+    // It gets triggered based on a blockchain event once a User enters a new agreement.
+    // If there is no additional action needed for creation, you can
     // just leave this method as empty and return mandatory details:
     /*  return {
       status: DeploymentStatus.Running,
@@ -55,6 +58,7 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
     /**
      * TODO: Implement how the details retrieved from the resource source.
      */
+    // This is one of the network-wide actions. All Protocols and all Providers need to implement this.
     // If there is no details, you can just return the existing ones;
     /* return {
       ...resource.details,
@@ -71,6 +75,8 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
     /**
      * TODO: Implement how the resource will be deleted.
      */
+    // This is one of the network-wide actions. All Protocols and all Providers need to implement this.
+    // It gets triggered based on a blockchain event once a User cancels an agreement.
     throw new Error("Method not implemented.");
   }
 }

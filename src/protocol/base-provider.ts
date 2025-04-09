@@ -11,8 +11,11 @@ import { z } from "zod";
 import { Address } from "viem";
 
 /**
- * The details will be stored for each created Resource.
+ * Defines the structure of details stored for each created Resource.
+ * Contains both public and private information about the resource.
  * @responsible Protocol Owner
+ * @property Example_Detail - A numeric value representing [describe purpose]
+ * @property _examplePrivateDetailWontSentToUser - Internal data not exposed to users
  */
 export type ExampleResourceDetails = ResourceDetails & {
   Example_Detail: number;
@@ -22,21 +25,26 @@ export type ExampleResourceDetails = ResourceDetails & {
 };
 
 /**
- * Base Provider that defines what kind of actions needs to be implemented for the Protocol.
+ * Abstract base class defining required actions for this Protocol implementation.
+ * All Protocol providers must extend this class and implement its abstract methods.
  * @responsible Protocol Owner
+ * @abstract
+ * @template ExampleResourceDetails - Type defining resource details structure
  */
 export abstract class BaseExampleServiceProvider extends AbstractProvider<ExampleResourceDetails> {
   /**
-   * An example function that represents service specific action. This
-   * function has to be implemented by all of the Providers who wants to.
-   * participate to this Protocol.
+   * An example function that represents service-specific action. This
+   * function has to be implemented by all of the Providers who want to
+   * participate in this Protocol.
    *
-   * The definition is up to Protocol Owner. So if some of the
-   * arguments are not needed, they can be deleted. Like `agreement` or
-   * `resource` can be deleted if they are unnecessary for the implementation.
+   * The definition is up to the Protocol Owner. So if some of the
+   * arguments are not needed, they can be deleted. E.g. `agreement` or
+   * `resource` can be deleted if they are unnecessary for this particular implementation.
    * @param agreement On-chain agreement data.
    * @param resource Resource information stored in the database.
    * @param additionalArgument Extra argument that related to the functionality (if needed).
+   * @returns Promise containing string and number results
+   * @throws {Error} When the operation fails
    */
   abstract doSomething(
     agreement: Agreement,
@@ -53,8 +61,8 @@ export abstract class BaseExampleServiceProvider extends AbstractProvider<Exampl
      * you can define "Pipe" routes to map the incoming requests from end users to the
      * corresponding methods.
      *
-     * Pipe is a simple abstraction layer that allow the participants to communicate
-     * HTTP like request-response style communication between them.
+     * Pipe is a simple abstraction layer that allows Actors to communicate with each other in a 
+     * HTTP-like request-response style.
      *
      * Take a look at the example below:
      */
@@ -62,9 +70,9 @@ export abstract class BaseExampleServiceProvider extends AbstractProvider<Exampl
     /** Calls "doSomething" method. */
     this.route(PipeMethod.GET, "/do-something", async (req) => {
       /**
-       * Validates the params/body of the request. If they are not valid
+       * Validate the params/body of the request. If they are not valid,
        * request will reply back to the user with a validation error message
-       * and bad request code automatically.
+       * and a 'bad request' code automatically.
        */
       const body = validateBodyOrParams(
         req.body,
@@ -72,7 +80,7 @@ export abstract class BaseExampleServiceProvider extends AbstractProvider<Exampl
           /** ID of the resource. */
           id: z.number(),
 
-          /** Protocol address that the resource created in. */
+          /** Protocol address in which the resource was created. */
           pt: addressSchema, // A pre-defined Zod schema for smart contract addresses.
 
           /** Additional argument for the method. */
@@ -87,11 +95,11 @@ export abstract class BaseExampleServiceProvider extends AbstractProvider<Exampl
        * We need to authorize the user (to be sure that he is the actual owner
        * of the resource) before processing the request. To do this, we can
        * use `this.getResource`. This method tries to find the resource data
-       * in the database based on the requester and throws proper errors if it cannot.
-       * If the requester is not the owner of the resource, it won't be found.
+       * in the database based on the requester and throws relevant errors if it cannot be found.
+       * If the requester is not the owner of the resource, it won't be found either.
        *
-       * So even you don't need to use resource data, you need to call `this.getResource`
-       * to be sure that user is actual owner of the resource.
+       * So even if you don't need to use resource data, you need to call `this.getResource`
+       * because it performs an authorization check.
        */
       const { agreement, resource } = await this.getResource(
         body.id,
@@ -99,7 +107,7 @@ export abstract class BaseExampleServiceProvider extends AbstractProvider<Exampl
         req.requester
       );
 
-      // Call the actual method and store the results of it.
+      // Call the actual method logic and retrieve the results.
       const result = await this.doSomething(agreement, resource, body.argument);
 
       // Return the response with the results.

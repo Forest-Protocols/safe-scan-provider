@@ -44,7 +44,7 @@ This Protocol has the following configuration. Some of them are enforced by the 
 | Price-to-Performance Optimization Weight | `{*Percentage}`            | Validator      |
 | Popularity Optimization Weight           | `{*Percentage}`            | Validator      |
 
-> Sum of the percentages mentioned with `+` sign must equal to 100. Same thing applies for `*` too.
+> Sum of the percentages marked with a + sign must equal 100. The same rule applies to percentages marked with *.
 
 You can always double-check the on-chain values e.g. [here](https://sepolia-optimism.etherscan.io/address/`{Smart Contract Address}`#readContract)
 

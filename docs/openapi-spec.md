@@ -4,7 +4,7 @@ As the owner of a Protocol, you can create an OpenAPI specification file for the
 
 ## Quickstart
 
-We use [OpenAPI Specification version 3.0](https://spec.openapis.org/oas/v3.0.0.html). You can define your endpoints using either JSON or YAML format and place it under `data` directory.
+We use [OpenAPI Specification version 3.0](https://spec.openapis.org/oas/v3.0.0.html). You can define your endpoints using either JSON or YAML format and place it under the `data` directory.
 
 - If an endpoint supports multiple methods, they will be listed in the CLI as `<path>-<method>`. For example, if your `query` path supports both `POST` and `GET`, the CLI will recognize two commands: `query-get` and `query-post`.
 - If an endpoint expects a request body, the properties within that body will be available as `--body.<property_name>` in the CLI. If the body is a primitive type (array, number, or string), it will be accessible via `--body`.

@@ -148,6 +148,12 @@ export abstract class AbstractProvider<
         config.CHAIN === "optimism" ? "production" : "dev"
       );
 
+      ["SIGTERM", "SIGINT"].forEach((signal) =>
+        process.on(signal, () => {
+          pipes[this.actorInfo.operatorAddr].close();
+        })
+      );
+
       this.logger.info(
         `Initialized Pipe for operator ${yellow.bold(
           this.actorInfo.operatorAddr

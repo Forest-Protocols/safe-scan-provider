@@ -19,7 +19,7 @@
 | Method-Path      | Params/Body                             | Response                 | Description                                                                                                                                                                                    |
 | ---------------- | --------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /details`   | `body: string[]`                        | `string[]`               | Retrieves the contents of detail files for the given CIDs. If one CID is given and corresponding file is not found, returns 404/Not Found. Otherwise returns an array of contents of the files |
-| `GET /resources` | `params: { id?: number, pc?: Address }` | `Resource[] \| Resource` | If `id` and `pc` is given, retrieves one resource information. Otherwise returns all resources of the requester                                                                                |
+| `GET /resources` | `params: { id?: number, pt?: Address }` | `Resource[] \| Resource` | If `id` and `pt` is given, retrieves one resource information. Otherwise returns all resources of the requester                                                                                |
 | `{Endpoint}`     | `{Body}`                                | `{Return Type}`          | `{Description}`                                                                                                                                                                                |
 
 ## Configuration Parameters

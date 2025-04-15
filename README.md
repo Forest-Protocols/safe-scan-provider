@@ -206,9 +206,11 @@ forest protocol create \
 
 ### 2. Fork and edit the repository
 
-Fork this repository and clone it locally. Open the `src/protocol/base-provider.ts` file. The first step is to define the details each resource will have. At the beginning of the file, there is a type definition named `ExampleResourceDetails`, which specifies the attributes stored in the daemon's database for each resource in this Protocol.
+Fork this repository and clone it locally. Open the `src/protocol/base-provider.ts` file. The first step is to define the details each "Resource" will have.
 
-Details of a resource are most likely the data that would be useful for the Users to see or the configuration that has to be used internally in order to handle the resource. They can be accessible by Users unless you prefix the detail name with `_`. For instance, these details might include connection strings for a Database resource or endpoints and API keys for an API service resource.
+Resources are the entities that are being created in consequence of on-chain "AgreementCreated" events. While Agreements live on-chain, Resources are kept as records in the daemon database and have a 1-1 relationship.
+
+At the beginning of the file, you'll see a type definition named `ExampleResourceDetails`, which specifies the attributes stored in the daemon's database for each Resource in this Protocol. Details of a Resource are most likely the data that would be useful for the Users to see or the configuration that has to be used internally in order to handle the Resource. They can be accessible by Users unless you prefix the detail name with `_`. For instance, these details might include connection strings for a Database Resource or endpoints and API keys for an API service Resource.
 
 Rename the type to match your service and edit the fields accordingly. An example type definition for the SQLite Protocol is shown below:
 

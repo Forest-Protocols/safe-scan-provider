@@ -6,10 +6,10 @@ The Network is permissionless and everyone is allowed to create a new Protocol.
 
 This repository contains instructions and code templates for innovators who want to create their own Protocols, grow them and earn passive income. What is required of a potential Protocol Owner is to:
 
-1. [Fork and edit the repository](#1-fork-and-edit-the-repository),
-2. [Registering in the Network](#2-registering-in-the-network),
-   1. [Register as a Protocol Owner](#21-register-as-a-protocol-owner),
-   2. [Register a New Protocol](#22-register-a-new-protocol),
+1. [Registering in the Network](#1-registering-in-the-network),
+   - [Register as a Protocol Owner](#11-register-as-a-protocol-owner),
+   - [Register a New Protocol](#12-register-a-new-protocol),
+2. [Fork and edit the repository](#2-fork-and-edit-the-repository),
 3. [Prepare the README file for Users and Providers](#3-prepare-the-readme-file-for-users-and-providers).
 4. [Grow Your Protocol by Onboarding Providers, Validators and Users](#4-grow-your-protocol).
 
@@ -17,138 +17,11 @@ This repository contains instructions and code templates for innovators who want
 
 As a Protocol Owner you want to make life easy for Providers that will be adding offers to your Protocol and servicing clients. That's why you need to create a Provider Template that each Provider will be running to deliver to its clients. We have already implemented all of the Network level functionality. The only thing you need to do is to define the Protocol specific code.
 
-### 1. Fork and edit the repository
+### 1. Registering in the Network
 
-Fork this repository and clone it locally. Open the `src/protocol/base-provider.ts` file. The first step is to define the details each resource will have. At the beginning of the file, there is a type definition named `ExampleResourceDetails`, which specifies the attributes stored in the daemon's database for each resource in this Protocol.
+Before at all, you need to register yourself as a Protocol Owner and register your Protocol in the Network.
 
-Details of a resource are most likely the data that would be useful for the Users to see or the configuration that has to be used internally in order to handle the resource. They can be accessible by Users unless you prefix the detail name with `_`. For instance, these details might include connection strings for a Database resource or endpoints and API keys for an API service resource.
-
-Rename the type to match your service and edit the fields accordingly. An example type definition for the SQLite Protocol is shown below:
-
-```typescript
-export type SQLiteDatabaseResourceDetails = ResourceDetails & {
-  // Fields should use PascalCase with underscores for spaces
-  Size_MB: number; // Database file size in MB
-
-  // Fields starting with an underscore are for internal use only and won't be seen by the Users.
-  _fileName: string; // SQLite database file name
-};
-```
-
-Once you have defined the details type, update the `BaseExampleServiceProvider` abstract class to define this protocol's supported methods / functionality. This is a set of actions that Users can request your Providers to complete if they have an active Agreement for a service in your PT. All Providers within this Protocol must implement all functions you define in this class. Rename the class to reflect your service. For example:
-
-```typescript
-export abstract class BaseSQLiteDatabaseServiceProvider extends AbstractServiceProvider<SQLiteDatabaseResourceDetails> {
-  /**
-   * Defines the services's functionality. All functions below
-   * must be implemented by Providers in this Protocol.
-   */
-
-  /**
-   * Executes the given SQL query on the database.
-   *
-   * @param resource Resource information stored in the database.
-   * @param query SQL query to execute.
-   */
-  abstract sqlQuery(resource: Resource, query: string): Promise<any[]>;
-}
-```
-
-After defining your service's functionalities (e.g., `sqlQuery`), you need to create "Pipe" endpoints to allow Users to invoke these functions.
-
-> "**_Pipe_**" is a simple abstraction layer for HTTP-like request-response communication between participants. The current Pipe implementation is built on [XMTP](https://xmtp.org/) for fully decentralized communication within the Protocol.
-
-Define these endpoints in the `init()` method. For example:
-
-```typescript
-async init(providerTag: string) {
-    // Call the base class' `init` function
-    await super.init(providerTag);
-
-    // TODO: Implement your Pipe endpoints
-
-    /**
-     * @param 1:
-     *  Pipe endpoints can be defined for different methods such as POST, PUT, DELETE, etc.
-     *  You can follow the traditional REST pattern to determine which method to use.
-     * @param 2:
-     *  Path of the endpoint. Clients/users send their requests to this endpoint
-     *  to invoke the `sqlQuery` method.
-     * @param 3:
-     *  Actual handler function that processes the request.
-     */
-    this.route(PipeMethod.GET, "/query", async (req) => {
-        /**
-         * In route handler functions, all errors are automatically handled
-         * with an "Internal server error" response. If the thrown error
-         * is an instance of `PipeError`, the response will use values provided
-         * by this error.
-         */
-
-        /**
-         * Parameters can be extracted from `req.body` or `req.params`.
-         * Here, we use `req.body`.
-         *
-         * We validate the body params using [Zod](https://zod.dev/)
-         * to ensure they conform to the expected schema.
-         */
-        const body = validateBodyOrParams(req.body, z.object({
-            id: z.number(), // Resource ID
-            pt: addressSchema, // Protocol address
-            query: z.string(), // SQL query
-        }));
-
-        /**
-         * Retrieve the resource from the daemon's database using `getResource`.
-         * If the resource is not found, an error is thrown automatically,
-         * and the request returns a "Not Found" error.
-         *
-         * This method also checks resource ownership. If the requester is
-         * not the resource owner, the resource will not be found in the database.
-         * Even if the return value is not used, calling this method ensures
-         * authorization.
-         */
-        const { resource } = await this.getResource(
-          body.id,
-          body.pt as Address,
-          req.requester
-        );
-
-        // Execute the SQL query with the provided arguments
-        const result = await this.sqlQuery(resource, body.query);
-
-        // Return the response
-        return {
-          code: PipeResponseCode.OK,
-          body: result,
-        };
-    });
-}
-```
-
-Once you are done with defining the abstract class, navigate to `src/protocol/provider.ts` and add a boilerplate implementation for your base class. For example:
-
-```typescript
-/**
- * The main class that implements Provider specific actions.
- * @responsible Provider
- */
-export class MainProviderImplementation extends BaseExampleServiceProvider {
-  // Other abstract functions...
-
-  async sqlQuery(resource: Resource, query: string): Promise<any[]> {
-    /**
-     * TODO: Implement how to execute an SQL query within the database.
-     * This function should process the query and return results accordingly.
-     */
-    throw new Error("Method not implemented.");
-  }
-}
-```
-
-### 2. Registering in the Network
-
-#### 2.1 Register as a Protocol Owner
+#### 1.1 Register as a Protocol Owner
 
 All Actors such as Protocol Owners, Providers and Validators need to register in the Network and pay the registration fee before they can start any type of interactions.
 
@@ -177,7 +50,7 @@ All Actors such as Protocol Owners, Providers and Validators need to register in
    ```
 7. Save your detail file into `data/details` folder.
 
-#### 2.2 Register a New Protocol
+#### 1.2 Register a New Protocol
 
 Each Protocol is a separate smart contract that is deployed by the Registry main protocol contract. To deploy a new Protocol:
 
@@ -330,6 +203,135 @@ forest protocol create \
 | `--provider-share`         | Percentage of emissions allocated to Providers.              |
 | `--validator-share`        | Percentage of emissions allocated to Validators.             |
 | `--pto-share`              | Percentage of emissions allocated to the Protocol Owner.     |
+
+### 2. Fork and edit the repository
+
+Fork this repository and clone it locally. Open the `src/protocol/base-provider.ts` file. The first step is to define the details each resource will have. At the beginning of the file, there is a type definition named `ExampleResourceDetails`, which specifies the attributes stored in the daemon's database for each resource in this Protocol.
+
+Details of a resource are most likely the data that would be useful for the Users to see or the configuration that has to be used internally in order to handle the resource. They can be accessible by Users unless you prefix the detail name with `_`. For instance, these details might include connection strings for a Database resource or endpoints and API keys for an API service resource.
+
+Rename the type to match your service and edit the fields accordingly. An example type definition for the SQLite Protocol is shown below:
+
+```typescript
+export type SQLiteDatabaseResourceDetails = ResourceDetails & {
+  // Fields should use PascalCase with underscores for spaces
+  Size_MB: number; // Database file size in MB
+
+  // Fields starting with an underscore are for internal use only and won't be seen by the Users.
+  _fileName: string; // SQLite database file name
+};
+```
+
+Once you have defined the details type, update the `BaseExampleServiceProvider` abstract class to define this protocol's supported methods / functionality. This is a set of actions that Users can request your Providers to complete if they have an active Agreement for a service in your PT. All Providers within this Protocol must implement all functions you define in this class. Rename the class to reflect your service. For example:
+
+```typescript
+export abstract class BaseSQLiteDatabaseServiceProvider extends AbstractServiceProvider<SQLiteDatabaseResourceDetails> {
+  /**
+   * Defines the services's functionality. All functions below
+   * must be implemented by Providers in this Protocol.
+   */
+
+  /**
+   * Executes the given SQL query on the database.
+   *
+   * @param resource Resource information stored in the database.
+   * @param query SQL query to execute.
+   */
+  abstract sqlQuery(resource: Resource, query: string): Promise<any[]>;
+}
+```
+
+After defining your service's functionalities (e.g., `sqlQuery`), you need to create "Pipe" endpoints to allow Users to invoke these functions.
+
+> "**_Pipe_**" is a simple abstraction layer for HTTP-like request-response communication between participants. The current Pipe implementation is built on [XMTP](https://xmtp.org/) for fully decentralized communication within the Protocol.
+
+Define these endpoints in the `init()` method. For example:
+
+```typescript
+async init(providerTag: string) {
+    // Call the base class' `init` function
+    await super.init(providerTag);
+
+    // TODO: Implement your Pipe endpoints
+
+    /**
+     * @param 1:
+     *  Pipe endpoints can be defined for different methods such as POST, PUT, DELETE, etc.
+     *  You can follow the traditional REST pattern to determine which method to use.
+     * @param 2:
+     *  Path of the endpoint. Clients/users send their requests to this endpoint
+     *  to invoke the `sqlQuery` method.
+     * @param 3:
+     *  Actual handler function that processes the request.
+     */
+    this.route(PipeMethod.GET, "/query", async (req) => {
+        /**
+         * In route handler functions, all errors are automatically handled
+         * with an "Internal server error" response. If the thrown error
+         * is an instance of `PipeError`, the response will use values provided
+         * by this error.
+         */
+
+        /**
+         * Parameters can be extracted from `req.body` or `req.params`.
+         * Here, we use `req.body`.
+         *
+         * We validate the body params using [Zod](https://zod.dev/)
+         * to ensure they conform to the expected schema.
+         */
+        const body = validateBodyOrParams(req.body, z.object({
+            id: z.number(), // Resource ID
+            pt: addressSchema, // Protocol address
+            query: z.string(), // SQL query
+        }));
+
+        /**
+         * Retrieve the resource from the daemon's database using `getResource`.
+         * If the resource is not found, an error is thrown automatically,
+         * and the request returns a "Not Found" error.
+         *
+         * This method also checks resource ownership. If the requester is
+         * not the resource owner, the resource will not be found in the database.
+         * Even if the return value is not used, calling this method ensures
+         * authorization.
+         */
+        const { resource } = await this.getResource(
+          body.id,
+          body.pt as Address,
+          req.requester
+        );
+
+        // Execute the SQL query with the provided arguments
+        const result = await this.sqlQuery(resource, body.query);
+
+        // Return the response
+        return {
+          code: PipeResponseCode.OK,
+          body: result,
+        };
+    });
+}
+```
+
+Once you are done with defining the abstract class, navigate to `src/protocol/provider.ts` and add a boilerplate implementation for your base class. For example:
+
+```typescript
+/**
+ * The main class that implements Provider specific actions.
+ * @responsible Provider
+ */
+export class MainProviderImplementation extends BaseExampleServiceProvider {
+  // Other abstract functions...
+
+  async sqlQuery(resource: Resource, query: string): Promise<any[]> {
+    /**
+     * TODO: Implement how to execute an SQL query within the database.
+     * This function should process the query and return results accordingly.
+     */
+    throw new Error("Method not implemented.");
+  }
+}
+```
 
 ### 3. Prepare the README file for Users and Providers
 

@@ -54,35 +54,37 @@ function parseProviderConfig() {
     [providerTag: string]: z.infer<typeof providerSchema>;
   } = {};
 
-  const path = join(process.cwd(), "data/providers.json");
+  const pkRegex = /^(PROVIDER|BILLING|OPERATOR)_PRIVATE_KEY_([\w]+)$/;
+  const ptAddressRegex = /^PROTOCOL_ADDRESS_([\w]+)$/;
+  for (const [name, value] of Object.entries(process.env)) {
+    const match = name.match(pkRegex);
+    if (match) {
+      const keyType = match[1];
+      const providerTag = match[2];
 
-  if (statSync(path, { throwIfNoEntry: false })?.isFile()) {
-    try {
-      const fileContent = readFileSync(path).toString();
-      const rootObject = JSON.parse(fileContent);
-      console.log(`Reading ${cyan("providers.json")}`);
-
-      for (const [name, info] of Object.entries(rootObject)) {
-        // Validate each provider object
-        const provider = providerSchema.safeParse(info, {});
-        if (provider.error) {
-          throw new Error(fromError(provider.error).toString());
-        }
-
-        providers[name] = provider.data!;
+      if (!providers[providerTag]) {
+        providers[providerTag] = {
+          billingWalletPrivateKey: "0x",
+          operatorWalletPrivateKey: "0x",
+          providerWalletPrivateKey: "0x",
+        };
       }
-    } catch (err: any) {
-      console.error(red(`Invalid providers.json file: ${err.message}`));
-      process.exit(1);
-    }
-  } else {
-    const pkRegex = /^(PROVIDER|BILLING|OPERATOR)_PRIVATE_KEY_([\w]+)$/;
-    const ptAddressRegex = /^PROTOCOL_ADDRESS_([\w]+)$/;
-    for (const [name, value] of Object.entries(process.env)) {
-      const match = name.match(pkRegex);
-      if (match) {
-        const keyType = match[1];
-        const providerTag = match[2];
+
+      switch (keyType) {
+        case "PROVIDER":
+          providers[providerTag].providerWalletPrivateKey = value as Address;
+          break;
+        case "OPERATOR":
+          providers[providerTag].operatorWalletPrivateKey = value as Address;
+          break;
+        case "BILLING":
+          providers[providerTag].billingWalletPrivateKey = value as Address;
+          break;
+      }
+    } else {
+      const ptMatch = name.match(ptAddressRegex);
+      if (ptMatch) {
+        const providerTag = ptMatch[1];
 
         if (!providers[providerTag]) {
           providers[providerTag] = {
@@ -92,50 +94,24 @@ function parseProviderConfig() {
           };
         }
 
-        switch (keyType) {
-          case "PROVIDER":
-            providers[providerTag].providerWalletPrivateKey = value as Address;
-            break;
-          case "OPERATOR":
-            providers[providerTag].operatorWalletPrivateKey = value as Address;
-            break;
-          case "BILLING":
-            providers[providerTag].billingWalletPrivateKey = value as Address;
-            break;
-        }
-      } else {
-        const ptMatch = name.match(ptAddressRegex);
-        if (ptMatch) {
-          const providerTag = ptMatch[1];
-
-          if (!providers[providerTag]) {
-            providers[providerTag] = {
-              billingWalletPrivateKey: "0x",
-              operatorWalletPrivateKey: "0x",
-              providerWalletPrivateKey: "0x",
-            };
-          }
-
-          providers[providerTag].protocolAddress = value as Address;
-        }
-      }
-    }
-
-    for (const [providerTag, keys] of Object.entries(providers)) {
-      const validation = providerSchema.safeParse(keys);
-
-      if (validation.error) {
-        const error = validation.error.errors[0];
-        console.error(
-          red(
-            `Invalid Provider configuration for tag "${providerTag}": ${error.path}: ${error.message}`
-          )
-        );
-        process.exit(1);
+        providers[providerTag].protocolAddress = value as Address;
       }
     }
   }
 
+  for (const [providerTag, keys] of Object.entries(providers)) {
+    const validation = providerSchema.safeParse(keys);
+
+    if (validation.error) {
+      const error = validation.error.errors[0];
+      console.error(
+        red(
+          `Invalid Provider configuration for tag "${providerTag}": ${error.path}: ${error.message}`
+        )
+      );
+      process.exit(1);
+    }
+  }
   return providers;
 }
 

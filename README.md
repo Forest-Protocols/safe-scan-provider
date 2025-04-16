@@ -19,15 +19,15 @@ As a Protocol Owner you want to make life easy for Providers that will be adding
 
 ### 1. Registering in the Network
 
-Before at all, you need to register yourself as a Protocol Owner and register your Protocol in the Network.
+At first, you need to register yourself as a Protocol Owner and register your Protocol in the Network.
 
 #### 1.1 Register as a Protocol Owner
 
 All Actors such as Protocol Owners, Providers and Validators need to register in the Network and pay the registration fee before they can start any type of interactions.
 
-**TESTNET NOTE**: if you need testnet tokens reach out to the Forest Network team on [Discord](https://discord.gg/8F8V8gEgua).
+**TESTNET NOTE**: if you need testnet tokens reach out to the Forest Network team on [Discord](https://discord.gg/HWm96wKzWV).
 
-1. Create a JSON detail file in the following schema and save it somewhere:
+1. Create a JSON details file in the following schema and save it somewhere:
 
 ```json
 {
@@ -48,13 +48,11 @@ All Actors such as Protocol Owners, Providers and Validators need to register in
         --details <JSON file name - (Detailed information about the Actor)> \
         --account <Private key of the caller's wallet>
    ```
-7. Save your detail file into `data/details` folder.
+7. Later you will need to copy your JSON details file into `data/details/[filename]` path of the Provider Base Template repo you will fork and clone, so remember where you have this file. The `[filename]` doesn't matter, choose whatever you like.
 
 #### 1.2 Register a New Protocol
 
-Each Protocol is a separate smart contract that is deployed by the Registry main protocol contract. To deploy a new Protocol:
-
-First, you need to create a file containing detailed information about this Protocol. You have two options to do this:
+Each Protocol is a separate smart contract that is deployed by the Registry main protocol contract. To deploy a new Protocol, first you need to create a file containing detailed information about it. You have two options to do this:
 
 ##### **Option 1:** Human-Readable Format
 
@@ -171,7 +169,7 @@ An example JSON file based on these type definitions:
 }
 ```
 
-2. Save it at `data/details/[file name]` in your forked Provider Template repository.
+2. Later you will need to copy your JSON details file into `data/details/[file name]` path of the Provider Base Template repo you will fork and clone, so remember where you have this file. the `[file name]` doesn't matter, choose whathever you like.
 
 ```sh
 forest protocol create \
@@ -208,7 +206,7 @@ forest protocol create \
 
 Fork this repository and clone it locally. Open the `src/protocol/base-provider.ts` file. The first step is to define the details each "Resource" will have.
 
-Resources are the entities that are being created in consequence of on-chain "AgreementCreated" events. While Agreements live on-chain, Resources are kept as records in the daemon database and have a 1-1 relationship.
+Resources are entities that are created in consequence of on-chain "AgreementCreated" events being emitted by the smartcontracts. While Agreements live on-chain, Resources are kept as records in the daemon database and have a 1-1 relationship with Agreements.
 
 At the beginning of the file, you'll see a type definition named `ExampleResourceDetails`, which specifies the attributes stored in the daemon's database for each Resource in this Protocol. Details of a Resource are most likely the data that would be useful for the Users to see or the configuration that has to be used internally in order to handle the Resource. They can be accessible by Users unless you prefix the detail name with `_`. For instance, these details might include connection strings for a Database Resource or endpoints and API keys for an API service Resource.
 
@@ -334,6 +332,8 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
   }
 }
 ```
+
+As the last step copy over your Protocol and Protocol Owner details files into `data/details` folder. The names of the files don't matter but please don't change them after registering on-chain as the files are looked up by the daemon based on their CIDs. So if you change the contents you will need to update the files commitments on-chain.
 
 ### 3. Prepare the README file for Users and Providers
 

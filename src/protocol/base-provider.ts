@@ -32,7 +32,7 @@ export type ExampleResourceDetails = ResourceDetails & {
  * @template ExampleResourceDetails - Type defining resource details structure
  */
 export abstract class BaseExampleServiceProvider extends AbstractProvider<ExampleResourceDetails> {
-  // These are network-wide actions defined in `AbstractProvider`. They have to be implemented by the Providers
+  // These are network-wide actions defined in `AbstractProvider` from which this class inherits. They have to be implemented by all of the Providers.
   /**
    * abstract create(agreement: Agreement, offer: DetailedOffer): Promise<T>;
    *
@@ -116,7 +116,7 @@ export abstract class BaseExampleServiceProvider extends AbstractProvider<Exampl
        * If the requester is not the owner of the resource, it won't be found either.
        *
        * Even if you are not using the Resource data, you need to call the `this.getResource`
-       * method in the endpoints that serves to the Users based on a Resource purchase.
+       * method in the endpoints that serve Users based on a Resource purchase.
        * This is because this method checks whether the requesting User is authorized
        * to use the Resource, whether the relevant Agreement is still active and has sufficient
        * funds. Otherwise we are responding to requests that do not meet these conditions,

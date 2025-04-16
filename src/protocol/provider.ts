@@ -21,8 +21,8 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
      */
 
     /**
-     * This is one of the protocol-wide actions. All Providers that registered
-     * in the Protocol need to implement this. It gets triggered based on the
+     * This is one of the protocol-wide actions. All Providers that are registered
+     * in this Protocol need to implement this. It gets triggered based on the
      * Protocol definition. You (Provider) need to implement it according
      * to its definition and based on your providing way.
      */
@@ -50,9 +50,9 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
      * need to implement this. It gets triggered based on a blockchain event
      * once a User enters a new Agreement. The base daemon code calls this function
      * and creates a corresponding Resource entry in the database. You (Provider) only
-     * need to implement the actual creation process of the Resource.
+     * need to implement the actual creation process of the Resource in your infra.
      *
-     * If there is no additional action needed for creation, you can leave this
+     * If there is no additional action needed for the creation, you can leave this
      * method as empty and return base details like shown below:
      */
 
@@ -71,14 +71,15 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
     resource: Resource
   ): Promise<ExampleResourceDetails> {
     /**
-     * TODO: Implement how the details retrieved from the actual Resource source.
+     * TODO: Implement retrieval of the details from the actual Resource source.
      */
 
     /**
      * This is one of the network-wide actions. All Protocols and all Providers
-     * need to implement this. It gets triggered in periodically if the `create()`
+     * need to implement this. It gets triggered periodically if the `create()`
      * method returned a status other than `DeploymentStatus.Running` until the
-     * deployment status that is returned from this function is being `Running`
+     * deployment status that is returned from this function is `Running`. 
+     * Also a Reource owner can trigger this function manually anytime.
      *
      * If there is no logic to retrieve details from the Resource, you can
      * simply return the existing details like shown below:
@@ -106,7 +107,7 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
      * need to implement this. It gets triggered based on a blockchain event
      * once a User cancels an agreement. The base daemon code calls this function
      * and deletes a corresponding Resource entry in the database. You (Provider) only
-     * need to implement the actual deletion process of the Resource.
+     * need to implement the actual deletion process of the Resource in your infra.
      *
      * If there is no additional action needed for deletion, you can leave this
      * method as empty.

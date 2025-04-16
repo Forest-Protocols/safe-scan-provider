@@ -1,4 +1,4 @@
-# Best practices and tips
+# Best Practices and Tips
 
 This document contains:
 - best practice recommendations for Providers and Protocol Owners to follow and 
@@ -47,7 +47,7 @@ async doSomething(): Promise<number> {
 
 So if the `result` is equal or greater than 50, the User will get a proper error message and response code.
 
-## Agreement balances
+## Agreement Balances
 
 > This section is for **Providers**
 

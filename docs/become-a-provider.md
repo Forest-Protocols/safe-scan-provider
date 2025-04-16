@@ -168,8 +168,6 @@ Once implementation is complete, place your Provider and Offer detail files into
 
 Now, create a `.env` file based on the example (`.env.example`) and configure the necessary variables.
 
-Then rename `data/providers.example.jsonc` to `data/providers.json`, clear the comments inside of it and fill the `main` tag with your private keys.
-
 As the last step, don't forget to put detail files of the Provider, Protocol and Offers into `data/details` folder.
 
 #### 5. Run the Provider Daemon

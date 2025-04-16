@@ -32,8 +32,25 @@ export type ExampleResourceDetails = ResourceDetails & {
  * @template ExampleResourceDetails - Type defining resource details structure
  */
 export abstract class BaseExampleServiceProvider extends AbstractProvider<ExampleResourceDetails> {
+  // These are network-wide actions defined in `AbstractProvider`. They have to be implemented by the Providers
   /**
-   * An example function that represents service-specific action. This
+   * abstract create(agreement: Agreement, offer: DetailedOffer): Promise<T>;
+   *
+   * abstract getDetails(
+   *  agreement: Agreement,
+   *  offer: DetailedOffer,
+   *  resource: Resource
+   * ): Promise<T>;
+   *
+   * abstract delete(
+   *  agreement: Agreement,
+   *  offer: DetailedOffer,
+   *  resource: Resource
+   * ): Promise<void>;
+   */
+
+  /**
+   * An example function that represents protocol-specific action. This
    * function has to be implemented by all of the Providers who want to
    * participate in this Protocol.
    *
@@ -61,7 +78,7 @@ export abstract class BaseExampleServiceProvider extends AbstractProvider<Exampl
      * you can define "Pipe" routes to map the incoming requests from end users to the
      * corresponding methods.
      *
-     * Pipe is a simple abstraction layer that allows Actors to communicate with each other in a 
+     * Pipe is a simple abstraction layer that allows Actors to communicate with each other in a
      * HTTP-like request-response style.
      *
      * Take a look at the example below:
@@ -98,8 +115,12 @@ export abstract class BaseExampleServiceProvider extends AbstractProvider<Exampl
        * in the database based on the requester and throws relevant errors if it cannot be found.
        * If the requester is not the owner of the resource, it won't be found either.
        *
-       * So even if you don't need to use resource data, you need to call `this.getResource`
-       * because it performs an authorization check.
+       * Even if you are not using the Resource data, you need to call the `this.getResource`
+       * method in the endpoints that serves to the Users based on a Resource purchase.
+       * This is because this method checks whether the requesting User is authorized
+       * to use the Resource, whether the relevant Agreement is still active and has sufficient
+       * funds. Otherwise we are responding to requests that do not meet these conditions,
+       * which is not desirable.
        */
       const { agreement, resource } = await this.getResource(
         body.id,

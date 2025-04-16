@@ -10,7 +10,6 @@ import {
   setGlobalRateLimit,
 } from "@forest-protocols/sdk";
 import { nonEmptyStringSchema } from "./validation/schemas";
-import { fromError } from "zod-validation-error";
 import { Address } from "viem";
 
 function parseEnv() {
@@ -23,6 +22,7 @@ function parseEnv() {
     PORT: z.coerce.number().default(3000),
     RATE_LIMIT: z.coerce.number().default(20),
     REGISTRY_ADDRESS: addressSchema.optional(),
+    AGREEMENT_CHECK_INTERVAL: z.coerce.number().default(30 * 60 * 1_000), // 30 min
   });
   const parsedEnv = environmentSchema.safeParse(process.env, {});
 

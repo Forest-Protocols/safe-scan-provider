@@ -114,7 +114,7 @@ class Program {
       .finally(() => {
         setInterval(
           () => this.checkAgreementBalances().catch(errorHandler),
-          30 * 60 * 1000
+          config.AGREEMENT_CHECK_INTERVAL
         );
       });
   }

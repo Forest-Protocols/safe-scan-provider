@@ -78,8 +78,7 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
      * This is one of the network-wide actions. All Protocols and all Providers
      * need to implement this. It gets triggered periodically if the `create()`
      * method returned a status other than `DeploymentStatus.Running` until the
-     * deployment status that is returned from this function is `Running`. 
-     * Also a Reource owner can trigger this function manually anytime.
+     * deployment status that is returned from this function is `Running`.
      *
      * If there is no logic to retrieve details from the Resource, you can
      * simply return the existing details like shown below:

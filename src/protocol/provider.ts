@@ -20,13 +20,20 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
      * TODO: Implement the logic of this protocol-specific action.
      */
 
-    // An example;
+    /**
+     * This is one of the protocol-wide actions. All Providers that registered
+     * in the Protocol need to implement this. It gets triggered based on the
+     * Protocol definition. You (Provider) need to implement it according
+     * to its definition and based on your providing way.
+     */
 
-    // Some important logic....
+    // Find the meaning of the life...
+    const result =
+      0b101010 - (crypto.getRandomValues(new Uint8Array(1))[0] & 1);
 
     return {
-      numberResult: agreement.id,
-      stringResult: `${resource.name}-${additionalArgument}`,
+      numberResult: result,
+      stringResult: `According to ${resource.name}, the meaning of the life is ${result}`,
     };
   }
 
@@ -35,12 +42,20 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
     offer: DetailedOffer
   ): Promise<ExampleResourceDetails> {
     /**
-     * TODO: Implement how the resource will be created. 
+     * TODO: Implement how the Resource will be created.
      */
-    // This is one of the network-wide actions. All Protocols and all Providers need to implement this.
-    // It gets triggered based on a blockchain event once a User enters a new agreement.
-    // If there is no additional action needed for creation, you can
-    // just leave this method as empty and return mandatory details:
+
+    /**
+     * This is one of the network-wide actions. All Protocols and all Providers
+     * need to implement this. It gets triggered based on a blockchain event
+     * once a User enters a new Agreement. The base daemon code calls this function
+     * and creates a corresponding Resource entry in the database. You (Provider) only
+     * need to implement the actual creation process of the Resource.
+     *
+     * If there is no additional action needed for creation, you can leave this
+     * method as empty and return base details like shown below:
+     */
+
     /*  return {
       status: DeploymentStatus.Running,
       _examplePrivateDetailWontSentToUser: "string data",
@@ -56,14 +71,24 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
     resource: Resource
   ): Promise<ExampleResourceDetails> {
     /**
-     * TODO: Implement how the details retrieved from the resource source.
+     * TODO: Implement how the details retrieved from the actual Resource source.
      */
-    // This is one of the network-wide actions. All Protocols and all Providers need to implement this.
-    // If there is no details, you can just return the existing ones;
+
+    /**
+     * This is one of the network-wide actions. All Protocols and all Providers
+     * need to implement this. It gets triggered in periodically if the `create()`
+     * method returned a status other than `DeploymentStatus.Running` until the
+     * deployment status that is returned from this function is being `Running`
+     *
+     * If there is no logic to retrieve details from the Resource, you can
+     * simply return the existing details like shown below:
+     */
+
     /* return {
       ...resource.details,
       status: resource.deploymentStatus,
     }; */
+
     throw new Error("Method not implemented.");
   }
 
@@ -73,10 +98,19 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
     resource: Resource
   ): Promise<void> {
     /**
-     * TODO: Implement how the resource will be deleted.
+     * TODO: Implement how the Resource will be deleted.
      */
-    // This is one of the network-wide actions. All Protocols and all Providers need to implement this.
-    // It gets triggered based on a blockchain event once a User cancels an agreement.
+
+    /**
+     * This is one of the network-wide actions. All Protocols and all Providers
+     * need to implement this. It gets triggered based on a blockchain event
+     * once a User cancels an agreement. The base daemon code calls this function
+     * and deletes a corresponding Resource entry in the database. You (Provider) only
+     * need to implement the actual deletion process of the Resource.
+     *
+     * If there is no additional action needed for deletion, you can leave this
+     * method as empty.
+     */
     throw new Error("Method not implemented.");
   }
 }

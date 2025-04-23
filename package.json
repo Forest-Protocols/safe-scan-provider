@@ -37,14 +37,14 @@
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.32.1",
-    "@forest-protocols/sdk": "^2.3.4",
+    "@forest-protocols/sdk": "^2.3.9",
     "ansis": "^3.7.0",
     "drizzle-orm": "^0.38.3",
     "ethers": "^6.13.5",
     "express": "^4.21.2",
     "pg": "^8.13.1",
     "unique-names-generator": "^4.7.1",
-    "viem": "^2.22.7",
+    "viem": "^2.27.2",
     "winston": "^3.17.0",
     "zod": "^3.24.1",
     "zod-validation-error": "^3.4.0"

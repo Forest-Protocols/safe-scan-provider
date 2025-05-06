@@ -120,6 +120,8 @@ export function pipeOperatorRoute(
       logger.error(
         `Pipe request with id ${req.id} on ${method} ${path} failed: ${error}`,
       );
+    } finally {
+      return await handler(req);
     }
   });
 }

@@ -119,9 +119,7 @@ export function pipeOperatorRoute(
       logger.error(
         `Pipe request with id ${req.id} on ${method} ${path} failed: ${error}`,
       );
-      throw new PipeError(PipeResponseCode.BAD_REQUEST, {
-        message: "Error in pipe route handler",
-      });
+      throw error;
     }
   });
 }

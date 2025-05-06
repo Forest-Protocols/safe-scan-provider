@@ -110,18 +110,18 @@ export function pipeOperatorRoute(
   pipes[operatorAddress].route(method, path, async (req) => {
     logger.info(`Got Pipe request with id ${req.id} on ${method} ${path}`);
     try {
-      const isSuccess = await handler(req);
-      if (isSuccess) {
-        logger.info(
-          `Pipe request with id ${req.id} on ${method} ${path} was successful`,
-        );
-      }
+      const result = await handler(req);
+      logger.info(
+        `Pipe request with id ${req.id} on ${method} ${path} was successful`,
+      );
+      return result;
     } catch (error) {
       logger.error(
         `Pipe request with id ${req.id} on ${method} ${path} failed: ${error}`,
       );
-    } finally {
-      return await handler(req);
+      throw new PipeError(PipeResponseCode.BAD_REQUEST, {
+        message: "Error in pipe route handler",
+      });
     }
   });
 }

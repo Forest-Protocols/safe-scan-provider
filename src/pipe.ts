@@ -37,7 +37,7 @@ export function providerPipeRoute(
   provider: AbstractProvider,
   method: PipeMethod,
   path: `/${string}`,
-  handler: ProviderPipeRouteHandler
+  handler: ProviderPipeRouteHandler,
 ) {
   if (!providerRoutes[provider.actorInfo.id]) {
     providerRoutes[provider.actorInfo.id] = {};
@@ -90,7 +90,7 @@ export function providerPipeRoute(
         ...req,
         providerId: providerId!,
       });
-    }
+    },
   );
 }
 
@@ -101,7 +101,7 @@ export function pipeOperatorRoute(
   operatorAddress: string,
   method: PipeMethod,
   path: string,
-  handler: PipeRouteHandler
+  handler: PipeRouteHandler,
 ) {
   if (!pipes[operatorAddress]) {
     throw new Error(`There is no pipe for ${operatorAddress}`);
@@ -109,6 +109,17 @@ export function pipeOperatorRoute(
 
   pipes[operatorAddress].route(method, path, async (req) => {
     logger.info(`Got Pipe request with id ${req.id} on ${method} ${path}`);
-    return await handler(req);
+    try {
+      const isSuccess = await handler(req);
+      if (isSuccess) {
+        logger.info(
+          `Pipe request with id ${req.id} on ${method} ${path} was successful`,
+        );
+      }
+    } catch (error) {
+      logger.error(
+        `Pipe request with id ${req.id} on ${method} ${path} failed: ${error}`,
+      );
+    }
   });
 }

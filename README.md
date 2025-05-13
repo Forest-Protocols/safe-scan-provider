@@ -1,4 +1,4 @@
-# Create a new Protocol
+# Create a New Protocol
 
 Forest Network consists of a multitude of Protocols that are incentivized to accelerate digital innovation and prove their worth to the users by building in-demand services. Every digital service can become a Protocol within Forest Network. The diversity of Protocols together with Network's inherent interoperability is what adds up to its strength.
 

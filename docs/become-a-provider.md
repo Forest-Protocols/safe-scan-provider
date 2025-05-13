@@ -10,11 +10,10 @@ If you want to start providing services in this Protocol, follow the steps below
 
 ### Step-by-step instructions
 
-#### Prerequisites
+#### 0. Prerequisites
 
 Install:
-- Node.js (min version 22.12.0): [official](https://nodejs.org/en/download)
-- (Optional) Node Version Manager: [link](https://github.com/nvm-sh/nvm)
+- Node.js (min version 22.12.0): [official](https://nodejs.org/en/download) or via (Optional) Node Version Manager: [link](https://github.com/nvm-sh/nvm)
 - ForestAI CLI: [official](https://www.npmjs.com/package/@forest-protocols/cli)
 - PostgreSQL (min version 16):
   * If you want to run Postgres natively: [official](https://www.postgresql.org/download/)

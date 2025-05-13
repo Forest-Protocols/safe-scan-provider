@@ -20,8 +20,7 @@ As a Protocol Owner you want to make life easy for Providers that will be adding
 ### 0. Prerequisites
 
 Install:
-- Node.js (min version 22.12.0): [official](https://nodejs.org/en/download)
-- (Optional) Node Version Manager: [link](https://github.com/nvm-sh/nvm)
+- Node.js (min version 22.12.0): [official](https://nodejs.org/en/download) or via (Optional) Node Version Manager: [link](https://github.com/nvm-sh/nvm)
 - ForestAI CLI: [official](https://www.npmjs.com/package/@forest-protocols/cli)
 
 ### 1. Registering in the Network

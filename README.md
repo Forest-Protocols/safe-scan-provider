@@ -16,6 +16,12 @@ This repository contains instructions and code templates for innovators who want
 ## Quickstart
 
 As a Protocol Owner you want to make life easy for Providers that will be adding offers to your Protocol and servicing clients. That's why you need to create a Provider Template that each Provider will be running to deliver to its clients. We have already implemented all of the Network level functionality. The only thing you need to do is to define the Protocol specific code.
+#### 0. Prerequisites
+
+Install:
+- Node.js (min version 22.12.0): [official](https://nodejs.org/en/download)
+- (Optional) Node Version Manager: [link](https://github.com/nvm-sh/nvm)
+- ForestAI CLI: [official](https://www.npmjs.com/package/@forest-protocols/cli)
 
 ### 1. Registering in the Network
 

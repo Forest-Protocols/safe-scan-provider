@@ -29,10 +29,11 @@ export const logger = createLogger({
         format.printf((info) => {
           const color = colors[info.level as LogLevel];
           const levelColor = ansis[color as ColorName];
+          const context = `${info.context || "Main"}`;
           const formatted = [
             `${info.timestamp}`,
             levelColor.bold(info.level.toUpperCase()),
-            " ".repeat(8 - info.level.length),
+            levelColor.bold(`[${context}]`),
             config.NODE_ENV == "dev" && info.stack
               ? levelColor(
                   `${info.message}${(info.stack as string[]).join("\n")}`

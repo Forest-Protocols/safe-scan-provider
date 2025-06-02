@@ -144,11 +144,7 @@ export abstract class AbstractProvider<
       );
 
       // Use dev env only for local and sepolia chains
-      await pipes[this.actorInfo.operatorAddr].init(
-        config.CHAIN === "optimism" || config.CHAIN === "base"
-          ? "production"
-          : "dev"
-      );
+      await pipes[this.actorInfo.operatorAddr].init(config.NODE_ENV);
 
       ["SIGTERM", "SIGINT"].forEach((signal) =>
         process.on(signal, () => {

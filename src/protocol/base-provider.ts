@@ -1,140 +1,181 @@
 import {
   addressSchema,
   Agreement,
+  MaybePromise,
+  PipeError,
   PipeMethod,
   PipeResponseCode,
   validateBodyOrParams,
 } from "@forest-protocols/sdk";
 import { AbstractProvider } from "@/abstract/AbstractProvider";
-import { Resource, ResourceDetails } from "@/types";
+import { DetailedOffer, Resource, ResourceDetails } from "@/types";
+
 import { z } from "zod";
 import { Address } from "viem";
+import { ChatCompletion, ChatCompletionMessageParam } from "openai/resources";
+import { tryParseJSON } from "@/utils";
+import { DB } from "@/database/Database";
+import { ChatMessage } from "gpt-tokenizer/esm/GptEncoding";
 
-/**
- * Defines the structure of details stored for each created Resource.
- * Contains both public and private information about the resource.
- * @responsible Protocol Owner
- * @property Example_Detail - A numeric value representing [describe purpose]
- * @property _examplePrivateDetailWontSentToUser - Internal data not exposed to users
- */
-export type ExampleResourceDetails = ResourceDetails & {
-  Example_Detail: number;
-
-  /* This field won't be sent when the User requested it */
-  _examplePrivateDetailWontSentToUser: string;
+export type MedQADetails = ResourceDetails & {
+  Input: number;
+  Output: number;
+  Input_Limit: number;
+  Output_Limit: number;
 };
 
-/**
- * Abstract base class defining required actions for this Protocol implementation.
- * All Protocol providers must extend this class and implement its abstract methods.
- * @responsible Protocol Owner
- * @abstract
- * @template ExampleResourceDetails - Type defining resource details structure
- */
-export abstract class BaseExampleServiceProvider extends AbstractProvider<ExampleResourceDetails> {
-  // These are network-wide actions defined in `AbstractProvider` from which this class inherits. They have to be implemented by all of the Providers.
+export abstract class BaseMedQAServiceProvider extends AbstractProvider<MedQADetails> {
   /**
-   * abstract create(agreement: Agreement, offer: DetailedOffer): Promise<T>;
-   *
-   * abstract getDetails(
-   *  agreement: Agreement,
-   *  offer: DetailedOffer,
-   *  resource: Resource
-   * ): Promise<T>;
-   *
-   * abstract delete(
-   *  agreement: Agreement,
-   *  offer: DetailedOffer,
-   *  resource: Resource
-   * ): Promise<void>;
+   * Calculates the input tokens and returns it. The return value is saved
+   * to the Resource details in order to track usage.
+   * @param model The model that is going to be used.
+   * @param chatMessages The messages that will be sent to the LLM.
    */
+  abstract calculateInputTokens(params: {
+    agreement: Agreement;
+    offer: DetailedOffer;
+    resource: Resource;
+    chatMessages: ChatMessage[];
+  }): MaybePromise<number>;
 
   /**
-   * An example function that represents protocol-specific action. This
-   * function has to be implemented by all of the Providers who want to
-   * participate in this Protocol.
-   *
-   * The definition is up to the Protocol Owner. So if some of the
-   * arguments are not needed, they can be deleted. E.g. `agreement` or
-   * `resource` can be deleted if they are unnecessary for this particular implementation.
-   * @param agreement On-chain agreement data.
-   * @param resource Resource information stored in the database.
-   * @param additionalArgument Extra argument that related to the functionality (if needed).
-   * @returns Promise containing string and number results
-   * @throws {Error} When the operation fails
+   * Calculates the output tokens and returns it. The return value is saved
+   * to the Resource details in order to track usage.
+   * @param chatMessages The messages that will be sent to the LLM.
    */
-  abstract doSomething(
-    agreement: Agreement,
-    resource: Resource,
-    additionalArgument: string
-  ): Promise<{ stringResult: string; numberResult: number }>;
+  abstract calculateOutputTokens(params: {
+    agreement: Agreement;
+    offer: DetailedOffer;
+    resource: Resource;
+    response: ChatCompletion;
+  }): MaybePromise<number>;
+
+  /**
+   * Checks the usage of the Resource. Based on the
+   * return value the requests will be allowed or rejected.
+   */
+  abstract checkUsage(params: {
+    agreement: Agreement;
+    offer: DetailedOffer;
+    resource: Resource;
+  }): MaybePromise<boolean>;
+
+  /**
+   * Prompts the given messages to the model and returns the response.
+   * @param model Model to be used.
+   * @param messages The messages that will be sent to the LLM.
+   */
+  abstract completions(params: {
+    agreement: Agreement;
+    offer: DetailedOffer;
+    resource: Resource;
+    messages: Array<ChatCompletionMessageParam>;
+  }): MaybePromise<ChatCompletion>;
 
   async init(providerTag: string) {
     // Base class' `init` function must be called.
     await super.init(providerTag);
 
-    /**
-     * If your service has some functionalities/interactions (like "doSomething" method)
-     * you can define "Pipe" routes to map the incoming requests from end users to the
-     * corresponding methods.
-     *
-     * Pipe is a simple abstraction layer that allows Actors to communicate with each other in a
-     * HTTP-like request-response style.
-     *
-     * Take a look at the example below:
-     */
+    this.route(PipeMethod.POST, "/chat/completions", async (req) => {
+      const bodyParams = z.object({
+        id: z.number(),
+        messages: z.array(
+          z.object({
+            content: z.string(),
+            role: z.enum(["system", "user", "assistant"]),
+          })
+        ),
+        pt: addressSchema,
+      });
 
-    /** Calls "doSomething" method. */
-    this.route(PipeMethod.GET, "/do-something", async (req) => {
-      /**
-       * Validate the params/body of the request. If they are not valid,
-       * request will reply back to the user with a validation error message
-       * and a 'bad request' code automatically.
-       */
-      const body = validateBodyOrParams(
-        req.body,
-        z.object({
-          /** ID of the resource. */
-          id: z.number(),
+      // Validate the body params
+      const body = validateBodyOrParams(req.body, bodyParams);
 
-          /** Protocol address in which the resource was created. */
-          pt: addressSchema, // A pre-defined Zod schema for smart contract addresses.
-
-          /** Additional argument for the method. */
-          argument: z.string(),
-        })
-      );
-
-      /**
-       * Retrieve the resource from the database.
-       *
-       * IMPORTANT NOTE:
-       * We need to authorize the user (to be sure that he is the actual owner
-       * of the resource) before processing the request. To do this, we can
-       * use `this.getResource`. This method tries to find the resource data
-       * in the database based on the requester and throws relevant errors if it cannot be found.
-       * If the requester is not the owner of the resource, it won't be found either.
-       *
-       * Even if you are not using the Resource data, you need to call the `this.getResource`
-       * method in the endpoints that serve Users based on a Resource purchase.
-       * This is because this method checks whether the requesting User is authorized
-       * to use the Resource, whether the relevant Agreement is still active and has sufficient
-       * funds. Otherwise we are responding to requests that do not meet these conditions,
-       * which is not desirable.
-       */
-      const { agreement, resource } = await this.getResource(
+      // Retrieve the Resource from the database and check Agreement status (`getResource` does everything)
+      const { resource, agreement } = await this.getResource(
         body.id,
         body.pt as Address,
         req.requester
       );
 
-      // Call the actual method logic and retrieve the results.
-      const result = await this.doSomething(agreement, resource, body.argument);
+      // Fetch the Offer that used to create the Resource
+      const rawOffer = await this.protocol.getOffer(agreement.offerId);
 
-      // Return the response with the results.
+      // Fetch the details of the Offer from the database
+      const [offerDetails] = await DB.getDetailFiles([rawOffer.detailsLink]);
+
+      // If the details is not found that means we cannot go further because the Provider
+      // is misconfigured and doesn't have access to the details file of the Offer that
+      // registered on-chain.
+      if (!offerDetails) {
+        throw new PipeError(PipeResponseCode.INTERNAL_SERVER_ERROR, {
+          message: "Offer details not found",
+        });
+      }
+
+      const parsedDetails = tryParseJSON(offerDetails.content);
+
+      // If we couldn't parse the details that means the Offer was misconfigured.
+      // That means we don't know which model is going to be used as well.
+      if (!parsedDetails) {
+        throw new PipeError(PipeResponseCode.INTERNAL_SERVER_ERROR, {
+          message: "Invalid Offer details",
+        });
+      }
+
+      // Offer data that combined with the details and on-chain information
+      const offer: DetailedOffer = {
+        ...rawOffer,
+        details: parsedDetails,
+      };
+
+      const isAllowed = await this.checkUsage({
+        agreement,
+        offer,
+        resource,
+      });
+
+      if (!isAllowed) {
+        throw new PipeError(PipeResponseCode.BAD_REQUEST, {
+          message: "The usage exceeded the limits",
+        });
+      }
+
+      // Calculate the input tokens and send the messages to the LLM
+      // then calculate output tokens as well to account the usage.
+      const inputTokens = await this.calculateInputTokens({
+        agreement,
+        resource,
+        offer,
+        chatMessages: body.messages,
+      });
+      const llmResponse = await this.completions({
+        agreement,
+        resource,
+        offer,
+        messages: body.messages,
+      });
+      const outputTokens = await this.calculateOutputTokens({
+        agreement,
+        offer,
+        resource,
+        response: llmResponse,
+      });
+
+      // Update the Resource record to include new usage
+      await DB.updateResource(resource.id, resource.ptAddress, {
+        details: {
+          ...resource.details,
+          Input: resource.details.Input + inputTokens,
+          Output: resource.details.Output + outputTokens,
+        } as MedQADetails,
+      });
+
       return {
         code: PipeResponseCode.OK,
-        body: result,
+        body: {
+          completions: llmResponse,
+        },
       };
     });
   }

@@ -1,95 +1,115 @@
-import { Agreement } from "@forest-protocols/sdk";
-import {
-  BaseExampleServiceProvider,
-  ExampleResourceDetails,
-} from "./base-provider";
+import { Agreement, DeploymentStatus } from "@forest-protocols/sdk";
+import { BaseMedQAServiceProvider, MedQADetails } from "./base-provider";
 import { DetailedOffer, Resource } from "@/types";
+import { ChatCompletion, ChatCompletionMessageParam } from "openai/resources";
+import { ChatMessage } from "gpt-tokenizer/esm/GptEncoding";
+import { encodeChat } from "gpt-tokenizer";
 
 /**
- * The main class that implements provider specific actions.
- * @responsible Provider
- * @implements {BaseExampleServiceProvider}
+ * Provider implementation for Generic LLM
  */
-export class MainProviderImplementation extends BaseExampleServiceProvider {
-  async doSomething(
-    agreement: Agreement,
-    resource: Resource,
-    additionalArgument: string
-  ): Promise<{ stringResult: string; numberResult: number }> {
+export class MedQAServiceProvider extends BaseMedQAServiceProvider {
+  async calculateInputTokens(params: {
+    agreement: Agreement;
+    offer: DetailedOffer;
+    resource: Resource;
+    chatMessages: ChatMessage[];
+  }): Promise<number> {
     /**
-     * TODO: Implement the logic of this protocol-specific action.
+     * TODO: Implement how to calculate the input tokens
      */
 
+    // Example implementation:
+    const tokens = encodeChat(
+      params.chatMessages,
+      (params.offer.details.deploymentParams?.model as any) || "gpt-4o"
+    );
+    return tokens.length;
+  }
+
+  async calculateOutputTokens(params: {
+    agreement: Agreement;
+    offer: DetailedOffer;
+    resource: Resource;
+    response: ChatCompletion;
+  }): Promise<number> {
     /**
-     * This is one of the protocol-wide actions. All Providers that are registered
-     * in this Protocol need to implement this. It gets triggered based on the
-     * Protocol definition. You (Provider) need to implement it according
-     * to its definition and based on your providing way.
+     * TODO: Implement how to calculate the output tokens
      */
 
-    // Find the meaning of the life...
-    const result =
-      0b101010 - (crypto.getRandomValues(new Uint8Array(1))[0] & 1);
+    // Example implementation:
+    const tokens = encodeChat(
+      params.response.choices.map((c) => ({
+        content: c.message.content!,
+        role: c.message.role,
+      })),
+      params.response.model as any
+    );
+    return tokens.length;
+  }
 
-    return {
-      numberResult: result,
-      stringResult: `According to ${resource.name}, the meaning of the life is ${result}`,
-    };
+  async checkUsage(params: {
+    agreement: Agreement;
+    offer: DetailedOffer;
+    resource: Resource;
+  }): Promise<boolean> {
+    /**
+     * TODO: Implement how to decide whether the usage is exceeded the limits
+     */
+
+    // Example implementation:
+    const details: MedQADetails = params.resource.details;
+    return (
+      details.Input < details.Input_Limit &&
+      details.Output < details.Output_Limit
+    );
+  }
+
+  async completions(params: {
+    agreement: Agreement;
+    offer: DetailedOffer;
+    resource: Resource;
+    messages: Array<ChatCompletionMessageParam>;
+  }): Promise<ChatCompletion> {
+    /**
+     * TODO: Implement how the completions requests will be sent to the LLM
+     */
+    throw new Error("Method not implemented.");
   }
 
   async create(
     agreement: Agreement,
     offer: DetailedOffer
-  ): Promise<ExampleResourceDetails> {
+  ): Promise<MedQADetails> {
     /**
-     * TODO: Implement how the Resource will be created.
+     * TODO: Implement how the resource will be created.
      */
 
-    /**
-     * This is one of the network-wide actions. All Protocols and all Providers
-     * need to implement this. It gets triggered based on a blockchain event
-     * once a User enters a new Agreement. The base daemon code calls this function
-     * and creates a corresponding Resource entry in the database. You (Provider) only
-     * need to implement the actual creation process of the Resource in your infra.
-     *
-     * If there is no additional action needed for the creation, you can leave this
-     * method as empty and return base details like shown below:
-     */
+    return {
+      Input: 0,
+      Input_Limit: offer.details.params.Input.value,
 
-    /*  return {
+      Output: 0,
+      Output_Limit: offer.details.params.Output.value,
+
       status: DeploymentStatus.Running,
-      _examplePrivateDetailWontSentToUser: "string data",
-      Example_Detail: 42,
-    }; */
-
-    throw new Error("Method not implemented.");
+    };
   }
 
   async getDetails(
     agreement: Agreement,
     offer: DetailedOffer,
     resource: Resource
-  ): Promise<ExampleResourceDetails> {
+  ): Promise<MedQADetails> {
     /**
      * TODO: Implement retrieval of the details from the actual Resource source.
      */
 
-    /**
-     * This is one of the network-wide actions. All Protocols and all Providers
-     * need to implement this. It gets triggered periodically if the `create()`
-     * method returned a status other than `DeploymentStatus.Running` until the
-     * deployment status that is returned from this function is `Running`.
-     *
-     * If there is no logic to retrieve details from the Resource, you can
-     * simply return the existing details like shown below:
-     */
-
-    /* return {
+    // If there is no extra action to retrieve the details, the default values can be returned.
+    return {
       ...resource.details,
       status: resource.deploymentStatus,
-    }; */
-
-    throw new Error("Method not implemented.");
+    };
   }
 
   async delete(
@@ -100,17 +120,5 @@ export class MainProviderImplementation extends BaseExampleServiceProvider {
     /**
      * TODO: Implement how the Resource will be deleted.
      */
-
-    /**
-     * This is one of the network-wide actions. All Protocols and all Providers
-     * need to implement this. It gets triggered based on a blockchain event
-     * once a User cancels an agreement. The base daemon code calls this function
-     * and deletes a corresponding Resource entry in the database. You (Provider) only
-     * need to implement the actual deletion process of the Resource in your infra.
-     *
-     * If there is no additional action needed for deletion, you can leave this
-     * method as empty.
-     */
-    throw new Error("Method not implemented.");
   }
 }

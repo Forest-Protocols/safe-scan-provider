@@ -39,9 +39,23 @@ export type Resource = {
 };
 
 export type DetailedOffer = Offer & {
-  details?: OfferDetails | string;
+  details: Omit<OfferDetails, "deploymentParams" | "params"> & {
+    deploymentParams?: {
+      model?: string;
+    };
+    params: {
+      Input: {
+        value: number;
+        unit: string;
+      };
+      Output: {
+        value: number;
+        unit: string;
+      };
+      Features: string[];
+    };
+  };
 };
-
 export type ProviderPipeRouteHandler = (
   req: PipeRequest & { providerId: number }
 ) => Promise<PipeRouteHandlerResponse | void> | PipeRouteHandlerResponse | void;

@@ -44,11 +44,11 @@ export type DetailedOffer = Offer & {
       model?: string;
     };
     params: {
-      Input: {
+      "Input Limit": {
         value: number;
         unit: string;
       };
-      Output: {
+      "Output Limit": {
         value: number;
         unit: string;
       };
@@ -56,6 +56,7 @@ export type DetailedOffer = Offer & {
     };
   };
 };
+
 export type ProviderPipeRouteHandler = (
   req: PipeRequest & { providerId: number }
 ) => Promise<PipeRouteHandlerResponse | void> | PipeRouteHandlerResponse | void;

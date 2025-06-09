@@ -87,10 +87,10 @@ export class MedQAServiceProvider extends BaseMedQAServiceProvider {
 
     return {
       Input: 0,
-      Input_Limit: offer.details.params.Input.value,
+      Input_Limit: offer.details.params["Input Limit"].value,
 
       Output: 0,
-      Output_Limit: offer.details.params.Output.value,
+      Output_Limit: offer.details.params["Output Limit"].value,
 
       status: DeploymentStatus.Running,
     };

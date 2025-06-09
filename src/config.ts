@@ -21,6 +21,8 @@ function parseEnv() {
     CHAIN: z
       .enum(["anvil", "optimism", "optimism-sepolia", "base", "base-sepolia"])
       .default("anvil"),
+    API_ENDPOINT: nonEmptyStringSchema,
+    API_KEY: nonEmptyStringSchema,
     PORT: z.coerce.number().default(3000),
     RATE_LIMIT: z.coerce.number().default(20),
     REGISTRY_ADDRESS: addressSchema.optional(),

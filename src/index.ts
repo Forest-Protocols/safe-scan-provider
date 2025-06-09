@@ -24,7 +24,7 @@ import { tryParseJSON } from "./utils";
 import { DetailedOffer } from "./types";
 import express from "express";
 import { config } from "./config";
-import { MedQAServiceProvider } from "./protocol/provider";
+import { OpenRouterProvider } from "./protocol/open-router-provider";
 
 async function sleep(ms: number) {
   return await new Promise((res) => setTimeout(res, ms));
@@ -42,7 +42,7 @@ function colorKeyword(word: string) {
 
 class Program {
   providers = {
-    main: new MedQAServiceProvider(),
+    main: new OpenRouterProvider("anthropic/claude-3.7-sonnet"),
   };
 
   listenedPTAddresses: string[] = [];

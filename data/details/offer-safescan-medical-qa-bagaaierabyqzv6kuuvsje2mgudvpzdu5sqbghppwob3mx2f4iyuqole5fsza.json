@@ -1,0 +1,24 @@
+{
+    "name": "SafeScan Medical Q&A Conversational Advice",
+    "deploymentParams": {
+        "model": "anthropic/claude-3.7-sonnet"
+    },
+    "params": {
+        "Input Limit": {
+            "unit": "tokens",
+            "value": 1000000
+        },
+        "Output Limit": {
+            "unit": "tokens",
+            "value": 1000000
+        },
+        "Context Size": {
+            "unit": "tokens",
+            "value": 200000
+        },
+        "Requests Limit": {
+            "unit": "item",
+            "value": 1000
+        }
+    }
+}

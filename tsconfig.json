@@ -8,12 +8,9 @@
     "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
-    "baseUrl": "./",
-    "rootDir": "./",
-    "outDir": "./dist",
     "noEmit": true,
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "exclude": ["node_modules", "dist"],

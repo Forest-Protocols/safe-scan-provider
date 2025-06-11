@@ -9,6 +9,7 @@ import {
 } from "@forest-protocols/sdk";
 import { nonEmptyStringSchema } from "./validation/schemas";
 import { Address } from "viem";
+import dotenv from "@dotenvx/dotenvx";
 
 function parseEnv() {
   const environmentSchema = z.object({
@@ -114,6 +115,10 @@ function parseProviderConfig() {
   }
   return providers;
 }
+
+// Load the env file if there is one.
+// Ignore the error if the file is not found.
+dotenv.config({ ignore: ["MISSING_ENV_FILE"] });
 
 const env = parseEnv();
 

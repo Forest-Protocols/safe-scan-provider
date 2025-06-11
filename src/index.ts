@@ -5,6 +5,7 @@ import {
   Offer,
   ProtocolABI,
   Status,
+  tryParseJSON,
 } from "@forest-protocols/sdk";
 import { Address, parseEventLogs } from "viem";
 import { DB } from "./database/client";
@@ -21,7 +22,6 @@ import {
 } from "unique-names-generator";
 import { join } from "path";
 import { readdirSync, readFileSync, statSync } from "fs";
-import { tryParseJSON } from "./utils";
 import { DetailedOffer } from "./types";
 import express from "express";
 import { config } from "./config";
@@ -140,7 +140,7 @@ class Program {
 
         // TODO: Validate schema
         // If it is a JSON file, parse it. Otherwise return it as a string.
-        details: tryParseJSON(offerDetailFile?.content),
+        details: tryParseJSON(offerDetailFile?.content, true),
       };
       const details = await provider.create(agreement, detailedOffer);
 

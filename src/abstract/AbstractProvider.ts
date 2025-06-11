@@ -10,7 +10,6 @@ import {
   Resource,
   ResourceDetails,
 } from "@/types";
-import { tryParseJSON } from "@/utils";
 import {
   addressSchema,
   PipeRouteHandler,
@@ -23,6 +22,8 @@ import {
   PipeResponseCode,
   Protocol,
   Registry,
+  tryParseJSON,
+  ProviderDetailsSchema,
 } from "@forest-protocols/sdk";
 import { yellow } from "ansis";
 import { readFileSync, statSync } from "fs";
@@ -58,7 +59,7 @@ export abstract class AbstractProvider<
 
     if (!providerConfig) {
       this.logger.error(
-        `Provider config not found for Provider tag "${providerTag}". Please check your data/providers.json file or environment variables`
+        `Provider config not found for Provider tag "${providerTag}". Please check your environment variables`
       );
       process.exit(1);
     }
@@ -92,11 +93,12 @@ export abstract class AbstractProvider<
       this.actorInfo.ownerAddr
     );
 
-    // TODO: Validate details schema
+    // `DB.upsertProvider` already checked the existence of the details file
+    // so we can directly destruct the return array.
     const [provDetailFile] = await DB.getDetailFiles([provider.detailsLink]);
 
-    // `DB.upsertProvider` already checked the existence of the details file
-    this.details = tryParseJSON(provDetailFile.content);
+    // Validate the details file structure
+    this.validateProviderDetails(provDetailFile.content);
 
     let ptAddress = providerConfig.protocolAddress;
     if (ptAddress === undefined) {
@@ -269,6 +271,27 @@ export abstract class AbstractProvider<
         };
       });
     }
+  }
+
+  /**
+   * Parses and validates the given details file content as Provider details.
+   * @param content
+   */
+  private validateProviderDetails(content: string) {
+    const detailsObject = tryParseJSON(content);
+    if (!detailsObject) {
+      this.logger.error(`Provider details file is not a JSON file`);
+      process.exit(1);
+    }
+
+    const detailsValidation = ProviderDetailsSchema.safeParse(detailsObject);
+    if (!detailsValidation.success) {
+      this.logger.error(
+        `Provider details file is not in the expected format: ${detailsValidation.error.message}`
+      );
+      process.exit(1);
+    }
+    this.details = detailsValidation.data;
   }
 
   /**

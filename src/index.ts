@@ -7,7 +7,7 @@ import {
   Status,
 } from "@forest-protocols/sdk";
 import { Address, parseEventLogs } from "viem";
-import { DB } from "./database/Database";
+import { DB } from "./database/client";
 import { logger } from "./logger";
 import { rpcClient } from "./clients";
 import { AbstractProvider } from "./abstract/AbstractProvider";

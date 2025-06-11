@@ -1,6 +1,6 @@
 import { rpcClient } from "@/clients";
 import { config } from "@/config";
-import { DB } from "@/database/Database";
+import { DB } from "@/database/client";
 import { PipeErrorNotFound } from "@/errors/pipe/PipeErrorNotFound";
 import { logger } from "@/logger";
 import { pipeOperatorRoute, pipes, providerPipeRoute } from "@/pipe";

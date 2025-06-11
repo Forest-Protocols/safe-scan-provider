@@ -4,6 +4,7 @@ import {
   DeploymentStatus,
   Offer,
   ProtocolABI,
+  sleep,
   Status,
   tryParseJSON,
 } from "@forest-protocols/sdk";
@@ -25,20 +26,7 @@ import { readdirSync, readFileSync, statSync } from "fs";
 import { DetailedOffer } from "./types";
 import express from "express";
 import { config } from "./config";
-
-async function sleep(ms: number) {
-  return await new Promise((res) => setTimeout(res, ms));
-}
-
-function colorNumber(num: bigint | number) {
-  return ansis.bold.red(`#${num}`);
-}
-function colorHex(hex: string) {
-  return ansis.bold.yellow(`${hex}`);
-}
-function colorKeyword(word: string) {
-  return ansis.bold.cyan(word);
-}
+import { colorHex, colorNumber, colorWord } from "./color";
 
 class Program {
   providers = {
@@ -377,7 +365,7 @@ class Program {
               logger.warning(
                 `Provider (id: ${
                   event.args.id
-                }) not found in Protocol ${colorHex(tx.to!)} for ${colorKeyword(
+                }) not found in Protocol ${colorHex(tx.to!)} for ${colorWord(
                   event.eventName
                 )} event. Skipping...`
               );
@@ -389,7 +377,7 @@ class Program {
             }
 
             logger.info(
-              `Event ${colorKeyword(
+              `Event ${colorWord(
                 event.eventName
               )} received for provider ${colorHex(
                 provider.account!.address

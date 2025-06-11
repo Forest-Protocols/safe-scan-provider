@@ -1,7 +1,5 @@
 import { z } from "zod";
-import { cyan, red } from "ansis";
-import { readFileSync, statSync } from "fs";
-import { join } from "path";
+import { red } from "ansis";
 import {
   addressSchema,
   ForestRegistryAddress,

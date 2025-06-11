@@ -160,7 +160,7 @@ export abstract class AbstractProvider<
 
       // Setup operator specific endpoints
 
-      this.operatorRoute(PipeMethod.GET, "/spec", async (req) => {
+      this.operatorRoute(PipeMethod.GET, "/spec", async () => {
         try {
           const possibleSpecFiles = [
             "spec.yaml",

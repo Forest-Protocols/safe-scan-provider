@@ -54,7 +54,7 @@ export const providersTable = pgTable("providers", {
   id: integer("id").primaryKey(),
   ownerAddress: varchar("owner_address", { length: 65 }).notNull().unique(),
 });
-relations(providersTable, ({ many, one }) => ({
+relations(providersTable, ({ many }) => ({
   resources: many(resourcesTable),
 }));
 
@@ -62,7 +62,7 @@ export const protocolsTable = pgTable("protocols", {
   id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
   address: varchar({ length: 100 }).notNull().unique(),
 });
-relations(protocolsTable, ({ many, one }) => ({
+relations(protocolsTable, ({ many }) => ({
   resources: many(resourcesTable),
 }));
 

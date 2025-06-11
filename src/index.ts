@@ -298,7 +298,7 @@ class Program {
   }
 
   getProtocolByAddress(address: Address) {
-    for (const [_, provider] of Object.entries(this.providers)) {
+    for (const [, provider] of Object.entries(this.providers)) {
       if (provider.protocol.address.toLowerCase() == address.toLowerCase()) {
         return provider.protocol;
       }
@@ -306,7 +306,7 @@ class Program {
   }
 
   getProviderByAddress(ownerAddress: Address) {
-    for (const [_, provider] of Object.entries(this.providers)) {
+    for (const [, provider] of Object.entries(this.providers)) {
       if (provider.account.address == ownerAddress) {
         return provider;
       }
@@ -451,7 +451,7 @@ class Program {
     const closingRequests: Promise<any>[] = [];
 
     // Check all agreements for all providers in all Protocols
-    for (const [_, provider] of Object.entries(this.providers)) {
+    for (const [, provider] of Object.entries(this.providers)) {
       const agreements = await provider.protocol.getAllProviderAgreements(
         provider.account!.address
       );
@@ -504,7 +504,7 @@ class Program {
         blockNumber: num,
         includeTransactions: true,
       });
-    } catch (err: any) {
+    } catch /* (err) */ {
       // logger.debug(err.stack);
     }
   }
@@ -523,7 +523,7 @@ class Program {
 const program = new Program();
 program.main();
 
-// eslint-disable-next-line @typescript-eslint/no-redeclare
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface BigInt {
   /** Convert to BigInt to string form in JSON.stringify */
   toJSON: () => string;

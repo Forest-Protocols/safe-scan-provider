@@ -1,7 +1,7 @@
 import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
 import { config } from "@/config";
 import { DeploymentStatus, generateCID } from "@forest-protocols/sdk";
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { PipeErrorNotFound } from "@/errors/pipe/PipeErrorNotFound";
 import { Address } from "viem/accounts";
 import { Resource } from "@/types";

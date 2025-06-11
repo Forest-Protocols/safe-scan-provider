@@ -1,4 +1,4 @@
-import { createPublicClient, http } from "viem";
+import { createPublicClient } from "viem";
 import { config } from "./config";
 import { forestChainToViemChain, httpTransport } from "@forest-protocols/sdk";
 

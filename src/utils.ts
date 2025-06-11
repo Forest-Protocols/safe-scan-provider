@@ -3,7 +3,7 @@
  */
 export function parseDatabaseConnectionString(connectionString: string) {
   const regex =
-    /^(?<protocol>[a-z]+):\/\/(?<username>[^:]+):(?<password>[^@]+)@(?<host>[^:\/]+)(?::(?<port>\d+))?(?:\/(?<database>[^?]+))?(?:\?(?<parameters>.*))?$/;
+    /^(?<protocol>[a-z]+):\/\/(?<username>[^:]+):(?<password>[^@]+)@(?<host>[^:/]+)(?::(?<port>\d+))?(?:\/(?<database>[^?]+))?(?:\?(?<parameters>.*))?$/;
 
   const match = connectionString.match(regex);
   if (!match)

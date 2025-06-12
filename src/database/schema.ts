@@ -1,6 +1,5 @@
 import { relations } from "drizzle-orm";
 import {
-  bigint,
   boolean,
   integer,
   json,
@@ -66,18 +65,11 @@ relations(protocolsTable, ({ many }) => ({
   resources: many(resourcesTable),
 }));
 
-export const blockchainTxsTable = pgTable(
-  "blockchain_transactions",
-  {
-    height: bigint({ mode: "bigint" }).notNull(),
-    hash: varchar({ length: 70 }).notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.height, table.hash],
-    }),
-  ]
-);
+export const configTable = pgTable("config", {
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+  key: varchar({ length: 100 }).notNull().unique(),
+  value: text().notNull(),
+});
 
 export const detailFilesTable = pgTable("detail_files", {
   id: integer().primaryKey().generatedByDefaultAsIdentity(),

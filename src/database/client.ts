@@ -1,13 +1,14 @@
 import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
 import { config } from "@/config";
 import { DeploymentStatus, generateCID } from "@forest-protocols/sdk";
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { PipeErrorNotFound } from "@/errors/pipe/PipeErrorNotFound";
 import { Address } from "viem/accounts";
 import { Resource } from "@/types";
 import { logger } from "@/logger";
 import * as schema from "./schema";
 import pg from "pg";
+import { cleanupHandlers } from "@/signal";
 
 export type DatabaseClientType = NodePgDatabase<typeof schema>;
 
@@ -21,6 +22,12 @@ class Database {
   constructor() {
     const pool = new pg.Pool({
       connectionString: config.DATABASE_URL,
+    });
+
+    cleanupHandlers.push(async () => {
+      this.logger.info("Closing the database connection");
+      await pool.end();
+      this.logger.info("Database connection closed");
     });
 
     this.client = drizzle(pool, {
@@ -84,6 +91,13 @@ class Database {
     return await this.resourceQuery().where(
       and(eq(schema.resourcesTable.ownerAddress, ownerAddress))
     );
+  }
+
+  async getResources(ids: number[]) {
+    return await this.client
+      .select()
+      .from(schema.resourcesTable)
+      .where(inArray(schema.resourcesTable.id, ids));
   }
 
   /**
@@ -189,18 +203,6 @@ class Database {
     return pt;
   }
 
-  /**
-   * Returns the latest processed block height for a provider.
-   */
-  async getLatestProcessedBlockHeight(): Promise<bigint | undefined> {
-    const [lastBlock] = await this.client
-      .select()
-      .from(schema.blockchainTxsTable)
-      .limit(1);
-
-    return lastBlock?.height;
-  }
-
   async getProvider(ownerAddress: string) {
     const [provider] = await this.client
       .select()
@@ -212,59 +214,6 @@ class Database {
     }
 
     return provider;
-  }
-
-  /**
-   * Retrieves a transaction from the database.
-   * @param blockHeight
-   * @param hash
-   */
-  async getTransaction(blockHeight: bigint, hash: string) {
-    const [tx] = await this.client
-      .select()
-      .from(schema.blockchainTxsTable)
-      .where(
-        and(
-          eq(schema.blockchainTxsTable.height, blockHeight),
-          eq(schema.blockchainTxsTable.hash, hash)
-        )
-      );
-
-    return tx;
-  }
-
-  /**
-   * Saves a transaction as processed
-   * @param blockHeight
-   */
-  async saveTransaction(blockHeight: bigint, hash: string) {
-    await this.client.transaction(async (tx) => {
-      const [transaction] = await tx
-        .select()
-        .from(schema.blockchainTxsTable)
-        .where(
-          and(
-            eq(schema.blockchainTxsTable.height, blockHeight),
-            eq(schema.blockchainTxsTable.hash, hash)
-          )
-        );
-
-      if (transaction) return;
-
-      await this.client.insert(schema.blockchainTxsTable).values({
-        height: blockHeight,
-        hash,
-      });
-    });
-  }
-
-  /**
-   * Deletes all of the records that belongs to a particular block height
-   */
-  async clearBlocks(blockHeight: bigint) {
-    await this.client
-      .delete(schema.blockchainTxsTable)
-      .where(eq(schema.blockchainTxsTable.height, blockHeight));
   }
 
   async saveDetailFiles(contents: string[]) {
@@ -359,6 +308,29 @@ class Database {
         address: address.toLowerCase(),
       });
     });
+  }
+
+  async getConfig(key: string) {
+    const [config] = await this.client
+      .select()
+      .from(schema.configTable)
+      .where(eq(schema.configTable.key, key));
+    return config?.value;
+  }
+
+  async setConfig(key: string, value: string) {
+    await this.client
+      .insert(schema.configTable)
+      .values({
+        key,
+        value,
+      })
+      .onConflictDoUpdate({
+        target: [schema.configTable.key],
+        set: {
+          value,
+        },
+      });
   }
 }
 

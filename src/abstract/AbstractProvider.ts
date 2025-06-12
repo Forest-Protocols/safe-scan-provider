@@ -1,9 +1,11 @@
 import { rpcClient } from "@/clients";
+import { colorHex } from "@/color";
 import { config } from "@/config";
 import { DB } from "@/database/client";
 import { PipeErrorNotFound } from "@/errors/pipe/PipeErrorNotFound";
 import { logger } from "@/logger";
 import { pipeOperatorRoute, pipes, providerPipeRoute } from "@/pipe";
+import { cleanupHandlers } from "@/signal";
 import {
   DetailedOffer,
   ProviderPipeRouteHandler,
@@ -145,14 +147,27 @@ export abstract class AbstractProvider<
         }
       );
 
-      // Use dev env only for local and sepolia chains
+      // Initialize the pipe
       await pipes[this.actorInfo.operatorAddr].init(config.NODE_ENV);
 
-      ["SIGTERM", "SIGINT"].forEach((signal) =>
-        process.on(signal, () => {
-          pipes[this.actorInfo.operatorAddr].close();
-        })
-      );
+      // Add a handler to close the Pipe when the program is terminated
+      cleanupHandlers.push(async () => {
+        this.logger.info(
+          `Closing Pipe of operator ${colorHex(this.actorInfo.operatorAddr)}`
+        );
+        try {
+          await pipes[this.actorInfo.operatorAddr].close();
+          this.logger.info(
+            `Pipe of operator ${colorHex(this.actorInfo.operatorAddr)} closed`
+          );
+        } catch (error) {
+          this.logger.error(
+            `Error closing pipe of operator ${colorHex(
+              this.actorInfo.operatorAddr
+            )}: ${error}`
+          );
+        }
+      });
 
       this.logger.info(
         `Initialized Pipe for operator ${yellow.bold(
@@ -271,6 +286,11 @@ export abstract class AbstractProvider<
         };
       });
     }
+
+    // Re-initialize the logger with the new context that includes the Provider tag
+    this.logger = logger.child({
+      context: `${this.constructor.name}(${providerTag})`,
+    });
   }
 
   /**

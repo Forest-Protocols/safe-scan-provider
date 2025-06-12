@@ -6,10 +6,12 @@ import {
   getContractAddressByChain,
   PrivateKeySchema,
   setGlobalRateLimit,
+  setGlobalRateLimitTimeWindow,
 } from "@forest-protocols/sdk";
 import { nonEmptyStringSchema } from "./validation/schemas";
 import { Address } from "viem";
 import dotenv from "@dotenvx/dotenvx";
+import { parseTime } from "./utils/parse-time";
 
 function parseEnv() {
   const environmentSchema = z.object({
@@ -22,8 +24,20 @@ function parseEnv() {
       .default("anvil"),
     PORT: z.coerce.number().default(3000),
     RATE_LIMIT: z.coerce.number().default(20),
+    RATE_LIMIT_WINDOW: z
+      .string()
+      .default("1s")
+      .transform((value, ctx) => parseTime(value, ctx)),
     REGISTRY_ADDRESS: addressSchema.optional(),
-    AGREEMENT_CHECK_INTERVAL: z.coerce.number().default(30 * 60 * 1_000), // 30 min
+    INDEXER_ENDPOINT: z.string().url().optional(),
+    AGREEMENT_CHECK_INTERVAL: z
+      .string()
+      .default("5s")
+      .transform((value, ctx) => parseTime(value, ctx)),
+    AGREEMENT_BALANCE_CHECK_INTERVAL: z
+      .string()
+      .default("5m")
+      .transform((value, ctx) => parseTime(value, ctx)),
   });
   const parsedEnv = environmentSchema.safeParse(process.env, {});
 
@@ -39,6 +53,7 @@ function parseEnv() {
 
   // Set global rate limit based on the given value (or default)
   setGlobalRateLimit(parsedEnv.data.RATE_LIMIT);
+  setGlobalRateLimitTimeWindow(parsedEnv.data.RATE_LIMIT_WINDOW);
 
   return parsedEnv.data;
 }

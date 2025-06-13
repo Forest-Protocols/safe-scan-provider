@@ -63,7 +63,6 @@ function indexerAgreementToAgreement(
 class Program {
   providers = {
     main: new MainProviderImplementation(),
-    localBareMetal: new MainProviderImplementation(),
   };
 
   indexer = new Indexer({

@@ -123,8 +123,11 @@ export class OpenRouterProvider extends BaseMedQAServiceProvider {
   }
 
   async delete(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     agreement: Agreement,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     offer: DetailedOffer,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     resource: Resource
   ): Promise<void> {
     /**

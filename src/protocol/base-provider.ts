@@ -5,16 +5,21 @@ import {
   PipeError,
   PipeMethod,
   PipeResponseCode,
+  tryParseJSON,
   validateBodyOrParams,
 } from "@forest-protocols/sdk";
 import { AbstractProvider } from "@/abstract/AbstractProvider";
-import { DetailedOffer, Resource, ResourceDetails } from "@/types";
+import {
+  DetailedOffer,
+  MedQAOfferDetails,
+  Resource,
+  ResourceDetails,
+} from "@/types";
 
 import { z } from "zod";
 import { Address } from "viem";
 import { ChatCompletion, ChatCompletionMessageParam } from "openai/resources";
-import { tryParseJSON } from "@/utils";
-import { DB } from "@/database/Database";
+import { DB } from "@/database/client";
 import { ChatMessage } from "gpt-tokenizer/esm/GptEncoding";
 
 export type MedQADetails = ResourceDetails & {
@@ -113,7 +118,9 @@ export abstract class BaseMedQAServiceProvider extends AbstractProvider<MedQADet
         });
       }
 
-      const parsedDetails = tryParseJSON(offerDetails.content);
+      const parsedDetails: MedQAOfferDetails | undefined = tryParseJSON(
+        offerDetails.content
+      );
 
       // If we couldn't parse the details that means the Offer was misconfigured.
       // That means we don't know which model is going to be used as well.

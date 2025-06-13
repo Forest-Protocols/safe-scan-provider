@@ -16,9 +16,9 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "lint": "tsc",
-    "dev": "dotenvx run -- tsx src/index.ts",
-    "start": "dotenvx run -- node dist/index.js",
+    "lint": "tsc && eslint",
+    "dev": "tsup --sourcemap --silent --onSuccess 'tsc-alias -p tsconfig.json -f && node dist/index.js'",
+    "start": "node dist/index.js",
     "build": "tsc && tsup",
     "clean": "rm -rf dist",
     "db:generate": "drizzle-kit generate",
@@ -26,18 +26,21 @@
     "db:push": "drizzle-kit push"
   },
   "devDependencies": {
+    "@eslint/js": "^9.28.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.5",
     "@types/pg": "^8.11.10",
     "drizzle-kit": "^0.30.1",
+    "eslint": "^9.28.0",
     "tsc-alias": "^1.8.10",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.34.0"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.32.1",
-    "@forest-protocols/sdk": "^2.8.3",
+    "@forest-protocols/sdk": "^2.9.0",
     "ansis": "^3.7.0",
     "drizzle-orm": "^0.38.3",
     "ethers": "^6.13.5",

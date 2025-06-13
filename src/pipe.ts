@@ -10,6 +10,7 @@ import { AbstractProvider } from "./abstract/AbstractProvider";
 import { z } from "zod";
 import { ProviderPipeRouteHandler } from "./types";
 import { logger } from "./logger";
+import { colorHex, colorWord } from "./color";
 
 /**
  * Operator pipes in this daemon
@@ -37,7 +38,7 @@ export function providerPipeRoute(
   provider: AbstractProvider,
   method: PipeMethod,
   path: `/${string}`,
-  handler: ProviderPipeRouteHandler,
+  handler: ProviderPipeRouteHandler
 ) {
   if (!providerRoutes[provider.actorInfo.id]) {
     providerRoutes[provider.actorInfo.id] = {};
@@ -90,7 +91,7 @@ export function providerPipeRoute(
         ...req,
         providerId: providerId!,
       });
-    },
+    }
   );
 }
 
@@ -101,23 +102,31 @@ export function pipeOperatorRoute(
   operatorAddress: string,
   method: PipeMethod,
   path: string,
-  handler: PipeRouteHandler,
+  handler: PipeRouteHandler
 ) {
   if (!pipes[operatorAddress]) {
     throw new Error(`There is no pipe for ${operatorAddress}`);
   }
 
   pipes[operatorAddress].route(method, path, async (req) => {
-    logger.info(`Got Pipe request with id ${req.id} on ${method} ${path}`);
+    logger.info(
+      `Got Pipe request with id ${colorWord(req.id)} from ${colorHex(
+        req.requester
+      )} on ${method} ${path}`
+    );
     try {
       const result = await handler(req);
       logger.info(
-        `Pipe request with id ${req.id} on ${method} ${path} was successful`,
+        `Pipe request with id ${colorWord(req.id)} from ${colorHex(
+          req.requester
+        )} on ${method} ${path} was successful`
       );
       return result;
     } catch (error) {
       logger.error(
-        `Pipe request with id ${req.id} on ${method} ${path} failed: ${error}`,
+        `Pipe request with id ${colorWord(req.id)} from ${colorHex(
+          req.requester
+        )} on ${method} ${path} failed: ${error}`
       );
       throw error;
     }

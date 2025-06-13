@@ -1,6 +1,6 @@
 import { Agreement, DeploymentStatus } from "@forest-protocols/sdk";
 import { BaseMedQAServiceProvider, MedQADetails } from "./base-provider";
-import { DetailedOffer, Resource } from "@/types";
+import { DetailedOffer, MedQAOfferDetails, Resource } from "@/types";
 import { ChatCompletion, ChatCompletionMessageParam } from "openai/resources";
 import { ChatMessage } from "gpt-tokenizer/esm/GptEncoding";
 import { encodeChat } from "gpt-tokenizer";
@@ -20,9 +20,10 @@ export class MedQAServiceProvider extends BaseMedQAServiceProvider {
      */
 
     // Example implementation:
+    const details = params.offer.details as unknown as MedQAOfferDetails;
     const tokens = encodeChat(
       params.chatMessages,
-      (params.offer.details.deploymentParams?.model as any) || "gpt-4o"
+      (details.deploymentParams?.model as any) || "gpt-4o"
     );
     return tokens.length;
   }
@@ -85,12 +86,14 @@ export class MedQAServiceProvider extends BaseMedQAServiceProvider {
      * TODO: Implement how the resource will be created.
      */
 
+    const details = offer.details as unknown as MedQAOfferDetails;
+
     return {
       Input: 0,
-      Input_Limit: offer.details.params["Input Limit"].value,
+      Input_Limit: details.params["Input Limit"].value,
 
       Output: 0,
-      Output_Limit: offer.details.params["Output Limit"].value,
+      Output_Limit: details.params["Output Limit"].value,
 
       status: DeploymentStatus.Running,
     };

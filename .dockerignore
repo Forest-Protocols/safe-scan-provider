@@ -1,9 +1,11 @@
-node_modules
 .vscode
 .env*
-dist
 .git
-README.md
 .prettierrc
+node_modules
+dist
+README.md
 volumes
-data/providers.json
+
+# XMTP Database files
+data/*.db*

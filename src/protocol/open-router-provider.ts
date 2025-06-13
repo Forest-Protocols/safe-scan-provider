@@ -7,8 +7,8 @@ import {
 import { BaseMedQAServiceProvider, MedQADetails } from "./base-provider";
 import OpenAI from "openai";
 import { config } from "@/config";
+import { DetailedOffer, MedQAOfferDetails, Resource } from "@/types";
 import { ChatCompletion, ChatCompletionMessageParam } from "openai/resources";
-import { DetailedOffer, Resource } from "@/types";
 import { ChatMessage } from "gpt-tokenizer/esm/GptEncoding";
 import { encodeChat } from "gpt-tokenizer";
 
@@ -74,7 +74,9 @@ export class OpenRouterProvider extends BaseMedQAServiceProvider {
     resource: Resource;
     messages: Array<ChatCompletionMessageParam>;
   }): Promise<ChatCompletion> {
-    if (!this.model && !params.offer.details.deploymentParams?.model) {
+    const details = params.offer.details as unknown as MedQAOfferDetails;
+
+    if (!this.model && !details.deploymentParams?.model) {
       throw new PipeError(PipeResponseCode.INTERNAL_SERVER_ERROR, {
         message: "Model is not defined",
       });
@@ -82,9 +84,11 @@ export class OpenRouterProvider extends BaseMedQAServiceProvider {
 
     // If the model is hardcoded as the constructor parameter then use it.
     // Otherwise try to find out from the Offer details.
+    const model = (this.model || details.deploymentParams?.model)!;
+
     const completion = await this.client.chat.completions.create({
       // One of them will be available because of the `if` statement above
-      model: this.model! || params.offer.details.deploymentParams?.model!,
+      model,
       messages: params.messages,
     });
     return completion;
@@ -94,12 +98,14 @@ export class OpenRouterProvider extends BaseMedQAServiceProvider {
     agreement: Agreement,
     offer: DetailedOffer
   ): Promise<MedQADetails> {
+    const details = offer.details as unknown as MedQAOfferDetails;
+
     return {
       Input: 0,
-      Input_Limit: offer.details.params["Input Limit"].value,
+      Input_Limit: details.params["Input Limit"].value,
 
       Output: 0,
-      Output_Limit: offer.details.params["Output Limit"].value,
+      Output_Limit: details.params["Output Limit"].value,
 
       status: DeploymentStatus.Running,
     };

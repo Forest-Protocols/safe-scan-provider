@@ -2,14 +2,16 @@
 import {
   Agreement,
   DeploymentStatus,
+  Indexer,
+  IndexerAgreement,
   Offer,
-  ProtocolABI,
+  sleep,
   Status,
+  tryParseJSON,
 } from "@forest-protocols/sdk";
-import { Address, parseEventLogs } from "viem";
-import { DB } from "./database/Database";
+import { Address } from "viem";
+import { DB } from "./database/client";
 import { logger } from "./logger";
-import { rpcClient } from "./clients";
 import { AbstractProvider } from "./abstract/AbstractProvider";
 import * as ansis from "ansis";
 import {
@@ -20,24 +22,42 @@ import {
 } from "unique-names-generator";
 import { join } from "path";
 import { readdirSync, readFileSync, statSync } from "fs";
-import { tryParseJSON } from "./utils";
 import { DetailedOffer } from "./types";
 import express from "express";
 import { config } from "./config";
 import { OpenRouterProvider } from "./protocol/open-router-provider";
+import { colorHex, colorNumber, colorWord } from "./color";
+import {
+  abortController,
+  addCleanupHandler,
+  cleanupHandlers,
+  removeCleanupHandler,
+} from "./signal";
+import { isTermination } from "./utils/is-termination";
+import { ensureError } from "./utils/ensure-error";
 
-async function sleep(ms: number) {
-  return await new Promise((res) => setTimeout(res, ms));
-}
+const CONFIG_LAST_PROCESSED_NEW_AGREEMENT_DATE =
+  "LAST_PROCESSED_NEW_AGREEMENT_DATE";
+const CONFIG_LAST_PROCESSED_CLOSED_AGREEMENT_DATE =
+  "LAST_PROCESSED_CLOSED_AGREEMENT_DATE";
 
-function colorNumber(num: bigint | number) {
-  return ansis.bold.red(`#${num}`);
-}
-function colorHex(hex: string) {
-  return ansis.bold.yellow(`${hex}`);
-}
-function colorKeyword(word: string) {
-  return ansis.bold.cyan(word);
+function indexerAgreementToAgreement(
+  agreement: IndexerAgreement,
+  offerId: number
+) {
+  return {
+    id: agreement.id,
+    balance: BigInt(agreement.balance),
+    endTs: agreement.endTs
+      ? BigInt(new Date(agreement.endTs).getTime() / 1000)
+      : 0n,
+    offerId,
+    provClaimedAmount: BigInt(agreement.provClaimedAmount),
+    provClaimedTs: BigInt(new Date(agreement.provClaimedTs).getTime() / 1000),
+    startTs: BigInt(new Date(agreement.startTs).getTime() / 1000),
+    status: agreement.status,
+    userAddr: agreement.userAddress,
+  };
 }
 
 class Program {
@@ -45,20 +65,24 @@ class Program {
     main: new OpenRouterProvider("anthropic/claude-3.7-sonnet"),
   };
 
-  listenedPTAddresses: string[] = [];
+  indexer = new Indexer({
+    baseURL: config.INDEXER_ENDPOINT,
+  });
+
+  noNewAgreementLog: Record<string, boolean> = {};
+  noClosedAgreementLog: Record<string, boolean> = {};
 
   constructor() {}
 
-  async init() {
-    // Start a healthcheck HTTP server
+  initHealthcheck() {
     const app = express();
     app.get("/health", (_, res) => {
       res.send("Running");
     });
-
     app.listen(config.PORT);
+  }
 
-    // Load detail files into the database
+  async loadDetailFiles() {
     logger.info("Detail files are loading to the database");
     const basePath = join(process.cwd(), "data/details");
     const files = readdirSync(basePath, { recursive: true }).filter((file) =>
@@ -71,52 +95,125 @@ class Program {
       readFileSync(join(basePath, file.toString())).toString("utf-8")
     );
     await DB.saveDetailFiles(contents);
+  }
+
+  async init() {
+    // Start a healthcheck HTTP server
+    this.initHealthcheck();
+
+    // Load detail files into the database
+    await this.loadDetailFiles();
 
     // Initialize providers
     for (const [tag, provider] of Object.entries(this.providers)) {
-      logger.info(`Provider "${tag}" initializing`);
+      provider.logger.info(`Initializing via tag "${colorWord(tag)}" `);
       await provider.init(tag);
 
       // Fetch detail links of the Protocol
-      logger.info(`Checking details of the Protocol`);
+      provider.logger.info(`Checking details of the Protocol`);
       const ptDetailsLink = await provider.protocol.getDetailsLink();
 
       // Save address of the Protocol to the database
-      this.listenedPTAddresses.push(provider.protocol.address.toLowerCase());
       await DB.upsertProtocol(provider.protocol.address, ptDetailsLink);
 
-      logger.info(
-        `Provider initialized; tag: ${ansis.cyanBright.bold(
-          tag
-        )}, address: ${ansis.yellow.bold(
+      provider.logger.info(
+        `Initialized; tag: ${colorWord(tag)}, owner address: ${colorHex(
           provider.actorInfo.ownerAddr
-        )}, operates on Protocol: ${ansis.yellow.bold(
-          provider.protocol.address
-        )}`
+        )}, operates on Protocol: ${colorHex(provider.protocol.address)}`
       );
     }
 
-    // Delete duplicated addresses
-    this.listenedPTAddresses = [...new Set(this.listenedPTAddresses)];
+    // Check balances of the Agreements at startup and then in every given interval
 
-    // Check balances of the Agreements at startup and then in every 30 minute
-    const errorHandler = (err: any) =>
-      logger.error(
-        ansis.red(
-          `Error while checking balances of the Agreements: ${
-            err?.message || err?.stack || err
-          }`
-        )
+    this.checkAgreementBalances().then(() => {
+      const interval = setInterval(
+        () => this.checkAgreementBalances(),
+        config.AGREEMENT_CHECK_INTERVAL
       );
 
-    this.checkAgreementBalances()
-      .catch(errorHandler)
-      .finally(() => {
-        setInterval(
-          () => this.checkAgreementBalances().catch(errorHandler),
-          config.AGREEMENT_CHECK_INTERVAL
-        );
-      });
+      addCleanupHandler(() => clearInterval(interval));
+    });
+  }
+
+  watchResourceStatus(params: {
+    provider: AbstractProvider;
+    ptAddress: Address;
+    detailedOffer: DetailedOffer;
+
+    agreementId: number;
+    ownerAddress: Address;
+  }) {
+    const handler = async () => {
+      while (!abortController.signal.aborted) {
+        try {
+          const resource = await DB.getResource(
+            params.agreementId,
+            params.ownerAddress,
+            params.ptAddress
+          );
+
+          if (!resource || !resource.isActive) {
+            params.provider.logger.warning(
+              `Resource ${colorNumber(
+                params.agreementId
+              )} is not available anymore, leaving status check`
+            );
+            return;
+          }
+
+          // TODO: Replace with an Indexer call
+          const agreement = await params.provider.protocol.getAgreement(
+            params.agreementId
+          );
+
+          const resourceDetails = await params.provider.getDetails(
+            agreement,
+            params.detailedOffer,
+            resource
+          );
+
+          if (resourceDetails.status == DeploymentStatus.Running) {
+            logger.info(
+              `Resource ${colorNumber(agreement.id)} is in running status`
+            );
+
+            // Update the status and gathered details
+            await DB.updateResource(agreement.id, params.ptAddress, {
+              deploymentStatus: DeploymentStatus.Running,
+              details: resourceDetails,
+            });
+            return;
+          }
+
+          await sleep(5_000, abortController.signal);
+        } catch (err) {
+          const error = ensureError(err);
+          if (!isTermination(error)) {
+            params.provider.logger.error(
+              `Error while try to retrieve details of the Resource ${colorNumber(
+                params.agreementId
+              )}: ${error.stack}`
+            );
+          }
+        }
+      }
+    };
+
+    // Run the `handler` function and add it
+    // to the cleanup handlers so in case if the process
+    // is terminated, the execution will wait until
+    // `handler` function is completed. In the other
+    // situation; If the `handler` is completed
+    // before the process is terminated, then
+    // we don't need to cleanup it anymore so remove it from
+    // the cleanup handlers.
+
+    // Promise of the execution of `handler` function so we can
+    // resolve it in the cleanup handler.
+    const promise = handler().then(() => removeCleanupHandler(handler));
+
+    // If meanwhile the process is terminated, the promise will be resolved (waited)
+    addCleanupHandler(() => promise);
   }
 
   async processAgreementCreated(
@@ -129,7 +226,7 @@ class Program {
       const [offerDetailFile] = await DB.getDetailFiles([offer.detailsLink]);
 
       if (!offerDetailFile) {
-        logger.warning(
+        provider.logger.warning(
           `Details file is not found for Offer ${agreement.offerId}@${ptAddress} (Provider ID: ${provider.actorInfo.id})`
         );
       }
@@ -140,7 +237,7 @@ class Program {
 
         // TODO: Validate schema
         // If it is a JSON file, parse it. Otherwise return it as a string.
-        details: tryParseJSON(offerDetailFile?.content),
+        details: tryParseJSON(offerDetailFile?.content, true),
       };
       const details = await provider.create(agreement, detailedOffer);
 
@@ -168,69 +265,32 @@ class Program {
         },
       });
 
-      if (details.status != DeploymentStatus.Running) {
-        logger.info(
-          `Creation request of agreement ${colorNumber(
-            agreement.id
-          )} resource has been created successfully`
-        );
-
-        // TODO: Create that interval on startup if there are resources still in "Deploying" state
-
-        // Create an interval to keep track of the deployment process
-        const interval = setInterval(async () => {
-          try {
-            const resource = await DB.getResource(
-              agreement.id,
-              agreement.userAddr,
-              ptAddress
-            );
-
-            if (!resource || !resource.isActive) {
-              clearInterval(interval);
-              logger.info(
-                `Resource ${colorNumber(
-                  agreement.id
-                )} is not available anymore, leaving status check`
-              );
-              return;
-            }
-
-            const resourceDetails = await provider.getDetails(
-              agreement,
-              detailedOffer,
-              resource
-            );
-
-            if (resourceDetails.status == DeploymentStatus.Running) {
-              logger.info(
-                `Resource ${colorNumber(agreement.id)} is in running status`
-              );
-
-              // Update the status and gathered details
-              await DB.updateResource(agreement.id, ptAddress, {
-                deploymentStatus: DeploymentStatus.Running,
-                details: resourceDetails,
-              });
-              clearInterval(interval);
-            }
-          } catch (err: any) {
-            logger.error(
-              `Error while try to retrieve details of the resource ${colorNumber(
-                agreement.id
-              )}: ${err.stack}`
-            );
-          }
-        }, 5000);
-      } else {
-        logger.info(
-          `Resource of agreement ${colorNumber(
+      if (details.status === DeploymentStatus.Running) {
+        provider.logger.info(
+          `Resource of Agreement ${colorNumber(
             agreement.id
           )} has been created successfully`
         );
+        return;
       }
+
+      // Resource is not in running state, so we need to check its status
+      provider.logger.info(
+        `Creation request of agreement ${colorNumber(
+          agreement.id
+        )} resource has been created successfully`
+      );
+
+      // Start the watcher
+      this.watchResourceStatus({
+        agreementId: agreement.id,
+        ownerAddress: agreement.userAddr,
+        ptAddress,
+        provider,
+        detailedOffer,
+      });
     } catch (err: any) {
-      logger.error(`Error while creating the resource: ${err.stack}`);
+      provider.logger.error(`Error while creating the Resource: ${err.stack}`);
 
       // Save the resource as failed
       const pt = await DB.getProtocol(ptAddress);
@@ -265,8 +325,8 @@ class Program {
         const [offerDetailFile] = await DB.getDetailFiles([offer.detailsLink]);
 
         if (!offerDetailFile) {
-          logger.warning(
-            `Details file is not found for Offer ${agreement.offerId}@${ptAddress} (Provider ID: ${provider.actorInfo.id})`
+          provider.logger.warning(
+            `Details file is not found for Offer ${agreement.offerId}@${ptAddress}`
           );
         }
 
@@ -274,41 +334,208 @@ class Program {
           agreement,
           {
             ...offer,
-            details: tryParseJSON(offerDetailFile?.content),
+            details: tryParseJSON(offerDetailFile?.content, true),
           },
           resource
         );
-        logger.info(
-          `Resource of agreement ${colorNumber(
+        provider.logger.info(
+          `Resource of Agreement ${colorNumber(
             agreement.id
           )} has been deleted successfully`
         );
       } else {
-        logger.warning(
+        provider.logger.warning(
           `Resource of agreement ${colorNumber(
             agreement.id
           )} is not found or not active`
         );
       }
     } catch (err: any) {
-      logger.error(`Error while deleting the resource: ${err.stack}`);
+      provider.logger.error(`Error while deleting the resource: ${err.stack}`);
     }
 
     await DB.deleteResource(agreement.id, ptAddress);
   }
 
-  getProtocolByAddress(address: Address) {
-    for (const [_, provider] of Object.entries(this.providers)) {
-      if (provider.protocol.address.toLowerCase() == address.toLowerCase()) {
-        return provider.protocol;
+  async checkNewAgreements(provider: AbstractProvider) {
+    try {
+      let page = 1;
+      const allAgreements: IndexerAgreement[] = [];
+      const lastProcessedNewAgreementDate = await DB.getConfig(
+        CONFIG_LAST_PROCESSED_NEW_AGREEMENT_DATE
+      );
+
+      while (true) {
+        const res = await this.indexer.getAgreements({
+          providerAddress: provider.actorInfo.ownerAddr,
+          status: Status.Active,
+          protocolAddress: provider.protocol.address,
+          limit: 100,
+          page,
+          startTs: lastProcessedNewAgreementDate,
+        });
+
+        allAgreements.push(...res.data);
+
+        if (res.pagination.totalPages <= page) {
+          break;
+        }
+
+        page++;
+      }
+
+      // Check if those Agreements are already in the database
+      const existingAgreements = await DB.getResources(
+        allAgreements.map((agreement) => agreement.id)
+      );
+
+      // Find non-existing Agreements
+      const nonExistingAgreements = allAgreements.filter(
+        (agreement) => !existingAgreements.find((a) => a.id == agreement.id)
+      );
+
+      if (nonExistingAgreements.length == 0) {
+        // If this log message is already logged, don't log it again
+        if (!this.noNewAgreementLog[provider.actorInfo.ownerAddr]) {
+          provider.logger.info(
+            `No new Agreements found for ${colorHex(
+              provider.actorInfo.ownerAddr
+            )}`
+          );
+          this.noNewAgreementLog[provider.actorInfo.ownerAddr] = true;
+        }
+        return;
+      }
+
+      provider.logger.info(
+        `${ansis.yellow.bold("Found")} ${
+          nonExistingAgreements.length
+        } new Agreements for ${colorHex(provider.actorInfo.ownerAddr)}`
+      );
+
+      for (const agreement of nonExistingAgreements) {
+        provider.logger.info(
+          `${ansis.green.bold("Creating")} Agreement ${colorNumber(
+            agreement.id
+          )} by ${colorHex(provider.actorInfo.ownerAddr)}`
+        );
+        const offer = await provider.protocol.getOffer(agreement.offerId);
+
+        await this.processAgreementCreated(
+          indexerAgreementToAgreement(agreement, offer.id),
+          offer,
+          provider.protocol.address,
+          provider
+        );
+
+        // Save the last processed new agreement date so
+        // in the next iteration we can continue from it.
+        await DB.setConfig(
+          CONFIG_LAST_PROCESSED_NEW_AGREEMENT_DATE,
+          agreement.startTs.toString()
+        );
+
+        this.noNewAgreementLog[provider.actorInfo.ownerAddr] = false;
+      }
+    } catch (err) {
+      const error = ensureError(err);
+      if (!isTermination(error)) {
+        provider.logger.error(
+          `Error while fetching the Agreements: ${error.stack}`
+        );
       }
     }
   }
 
-  getProviderByAddress(ownerAddress: Address) {
-    for (const [_, provider] of Object.entries(this.providers)) {
-      if (provider.account.address == ownerAddress) {
-        return provider;
+  async checkClosedAgreements(provider: AbstractProvider) {
+    try {
+      let page = 1;
+      const allAgreements: IndexerAgreement[] = [];
+      const lastProcessedClosedAgreementDate = await DB.getConfig(
+        CONFIG_LAST_PROCESSED_CLOSED_AGREEMENT_DATE
+      );
+
+      while (true) {
+        const res = await this.indexer.getAgreements({
+          providerAddress: provider.actorInfo.ownerAddr,
+          status: Status.NotActive,
+          protocolAddress: provider.protocol.address,
+          limit: 100,
+          page,
+          startTs: lastProcessedClosedAgreementDate,
+        });
+
+        allAgreements.push(...res.data);
+
+        if (res.pagination.totalPages <= page) {
+          break;
+        }
+
+        page++;
+      }
+
+      // Get the existing Agreements from the database
+      const existingAgreements = await DB.getResources(
+        allAgreements.map((agreement) => agreement.id)
+      );
+
+      // Find non-closed ones
+      const nonClosedResources = existingAgreements.filter(
+        (resource) => resource.isActive
+      );
+
+      if (nonClosedResources.length == 0) {
+        // If this log message is already logged, don't log it again
+        if (!this.noClosedAgreementLog[provider.actorInfo.ownerAddr]) {
+          provider.logger.info(
+            `No Agreements found to be closed by ${colorHex(
+              provider.actorInfo.ownerAddr
+            )}`
+          );
+          this.noClosedAgreementLog[provider.actorInfo.ownerAddr] = true;
+        }
+        return;
+      }
+
+      provider.logger.info(
+        `${ansis.yellow.bold("Found")} ${
+          nonClosedResources.length
+        } Agreements to be closed by ${colorHex(provider.actorInfo.ownerAddr)}`
+      );
+
+      for (const resource of nonClosedResources) {
+        provider.logger.info(
+          `${ansis.red.bold("Closing")} Agreement ${colorNumber(
+            resource.id
+          )} by ${colorHex(provider.actorInfo.ownerAddr)}`
+        );
+        const agreement = allAgreements.find(
+          (agreement) => agreement.id == resource.id
+        )!;
+        const offer = await provider.protocol.getOffer(agreement.offerId);
+
+        await this.processAgreementClosed(
+          indexerAgreementToAgreement(agreement, offer.id),
+          offer,
+          provider.protocol.address,
+          provider
+        );
+
+        // Save the last processed closed agreement date so
+        // in the next iteration we can continue from it.
+        await DB.setConfig(
+          CONFIG_LAST_PROCESSED_CLOSED_AGREEMENT_DATE,
+          agreement.startTs
+        );
+
+        this.noClosedAgreementLog[provider.actorInfo.ownerAddr] = false;
+      }
+    } catch (err) {
+      const error = ensureError(err);
+      if (!isTermination(error)) {
+        provider.logger.error(
+          `Error while fetching the Agreements: ${error.stack}`
+        );
       }
     }
   }
@@ -316,214 +543,98 @@ class Program {
   async main() {
     await this.init();
 
-    logger.info("Started to listening blockchain events");
-    let currentBlockNumber = await this.findStartBlock();
+    logger.info("Daemon is started");
 
-    while (true) {
-      const block = await this.getBlock(currentBlockNumber);
-
-      if (!block) {
-        logger.debug(`Waiting for block ${colorNumber(currentBlockNumber)}...`);
-        await this.waitBlock(currentBlockNumber);
-        continue;
-      }
-
-      logger.debug(`Processing block ${colorNumber(block.number)}`);
-      for (const tx of block.transactions) {
-        // If the TX is not belong to any of the Protocol contracts that we are listening, just skip it.
-        if (!this.listenedPTAddresses.includes(tx.to?.toLowerCase() || "")) {
-          continue;
-        }
-
-        const receipt = await rpcClient.getTransactionReceipt({
-          hash: tx.hash,
-        });
-
-        if (receipt.status == "reverted") {
-          logger.debug(`TX (${colorHex(tx.hash)}) is reverted, skipping...`);
-          continue;
-        }
-
-        const txRecord = await DB.getTransaction(tx.blockNumber, tx.hash);
-
-        if (txRecord) {
-          logger.debug(
-            `TX (${colorHex(tx.hash)}) is already processed, skipping...`
-          );
-          continue;
-        }
-
-        const events = parseEventLogs({
-          abi: ProtocolABI,
-          logs: receipt.logs,
-        });
-
-        for (const event of events) {
-          if (
-            event.eventName == "AgreementCreated" ||
-            event.eventName == "AgreementClosed"
-          ) {
-            // Theoretically there is no way for a Protocol to be not found
-            // Because at startup, they were added based on blockchain data.
-            const pt = this.getProtocolByAddress(tx.to!)!;
-            const agreement = await pt.getAgreement(event.args.id as number);
-            const offer = await pt.getOffer(agreement.offerId);
-            const provider = this.getProviderByAddress(offer.ownerAddr);
-
-            // NOTE: Is it possible for a provider to be not found?
-            // If the provider is not available in this daemon,
-            // save TX as processed and skip it.
-            if (!provider) {
-              logger.warning(
-                `Provider (id: ${
-                  event.args.id
-                }) not found in Protocol ${colorHex(tx.to!)} for ${colorKeyword(
-                  event.eventName
-                )} event. Skipping...`
-              );
-              await DB.saveTransaction(
-                event.blockNumber,
-                event.transactionHash
-              );
-              continue;
-            }
-
-            logger.info(
-              `Event ${colorKeyword(
-                event.eventName
-              )} received for provider ${colorHex(
-                provider.account!.address
-              )} from ${colorHex(tx.from)}`
-            );
-
-            try {
-              if (event.eventName == "AgreementCreated") {
-                await this.processAgreementCreated(
-                  agreement,
-                  offer,
-                  tx.to!,
-                  provider
-                );
-              } else {
-                await this.processAgreementClosed(
-                  agreement,
-                  offer,
-                  tx.to!,
-                  provider
-                );
-              }
-            } catch (err: any) {
-              logger.error(
-                ansis.red(
-                  `Error while processing the event: ${err?.stack || err}`
-                )
-              );
-            }
-
-            // Save the TX as processed
-            await DB.saveTransaction(event.blockNumber, event.transactionHash);
-          }
+    while (!abortController.signal.aborted) {
+      for (const [, provider] of Object.entries(this.providers)) {
+        try {
+          await this.checkNewAgreements(provider);
+          await this.checkClosedAgreements(provider);
+        } catch (err) {
+          const error = ensureError(err);
+          provider.logger.error(`Error: ${error.stack}`);
         }
       }
 
-      if (block.transactions.length == 0) {
-        logger.debug(
-          `No transactions found in block ${colorNumber(
-            block.number
-          )}, skipping...`
-        );
+      try {
+        await sleep(config.AGREEMENT_CHECK_INTERVAL, abortController.signal);
+      } catch {
+        // Termination signal is received
       }
-
-      // Empty hash means block itself, so this block is completely processed
-      await DB.saveTransaction(currentBlockNumber, "");
-
-      // Clear all of the data that belongs to the previous block because we have a new "last processed block"
-      await DB.clearBlocks(currentBlockNumber - 1n);
-      currentBlockNumber++;
-
-      // Wait a little bit before going to the next block
-      await sleep(500);
     }
+
+    logger.info("Waiting for cleanup...");
+
+    // Execute cleanup functions and wait for them to finish
+    await Promise.all(cleanupHandlers.map((fn) => fn()));
   }
 
   async checkAgreementBalances() {
-    logger.info("Checking balances of the Agreements", { context: "Checker" });
-    const closingRequests: Promise<any>[] = [];
+    // Check all Agreements of the Providers
+    for (const [, provider] of Object.entries(this.providers)) {
+      try {
+        let page = 1;
+        const activeAgreements: IndexerAgreement[] = [];
 
-    // Check all agreements for all providers in all Protocols
-    for (const [_, provider] of Object.entries(this.providers)) {
-      const agreements = await provider.protocol.getAllProviderAgreements(
-        provider.account!.address
-      );
+        while (true) {
+          const res = await this.indexer.getAgreements({
+            providerAddress: provider.actorInfo.ownerAddr,
+            status: Status.Active,
+            protocolAddress: provider.protocol.address,
+            limit: 100,
+            page,
+          });
 
-      for (const agreement of agreements) {
-        if (agreement.status == Status.NotActive) {
-          continue;
+          activeAgreements.push(...res.data);
+
+          if (res.pagination.totalPages <= page) {
+            break;
+          }
+
+          page++;
         }
 
-        const balance = await provider.protocol.getRemainingAgreementBalance(
-          agreement.id
+        // Filter the Agreements that don't have enough balance
+        const agreementsToBeClosed = activeAgreements.filter(
+          (agreement) => BigInt(agreement.balance) <= 0n
         );
 
-        // If balance of the agreement is ran out of,
-        if (balance <= 0n) {
-          logger.warning(
-            `User ${
-              agreement.userAddr
-            } has ran out of balance for Agreement ${colorNumber(agreement.id)}`
+        for (const agreement of agreementsToBeClosed) {
+          provider.logger.warning(
+            `Agreement ${colorNumber(agreement.id)}@${colorHex(
+              agreement.protocolAddress
+            )} ran out of balance, closing...`
           );
-
-          // Queue closeAgreement call to the promise list.
-          closingRequests.push(
-            provider.protocol.closeAgreement(agreement.id).catch((err) => {
-              logger.error(
-                `Error thrown while trying to force close Agreement ${colorNumber(
-                  agreement.id
-                )}: ${err.stack}`
-              );
-            })
-          );
+          try {
+            await provider.protocol.closeAgreement(agreement.id);
+          } catch (err) {
+            const error = ensureError(err);
+            provider.logger.error(
+              `Error while closing Agreement ${colorNumber(
+                agreement.id
+              )}@${colorHex(agreement.protocolAddress)}: ${error.stack}`
+            );
+          }
         }
+      } catch (err) {
+        const error = ensureError(err);
+        provider.logger.error(
+          `Error while checking balances of the Agreements@${colorHex(
+            provider.protocol.address
+          )}: ${error.stack}`
+        );
       }
-    }
-    // Wait until all of the closeAgreement calls (if there are) are finished
-    await Promise.all(closingRequests);
-  }
-
-  async findStartBlock() {
-    const latestProcessedBlock = await DB.getLatestProcessedBlockHeight();
-
-    // TODO: Find the registration TX of the provider and start from there if the latestProcessedBlock is undefined
-
-    return latestProcessedBlock || (await rpcClient.getBlockNumber());
-  }
-
-  async getBlock(num: bigint) {
-    try {
-      return await rpcClient.getBlock({
-        blockNumber: num,
-        includeTransactions: true,
-      });
-    } catch (err: any) {
-      // logger.debug(err.stack);
-    }
-  }
-
-  async waitBlock(num: bigint) {
-    while (true) {
-      const block = await this.getBlock(num);
-
-      if (block) return;
-
-      await sleep(3000);
     }
   }
 }
 
 const program = new Program();
-program.main();
+program.main().then(() => {
+  logger.info(ansis.yellow("See ya..."));
+  process.exit(process.exitCode || 0);
+});
 
-// eslint-disable-next-line @typescript-eslint/no-redeclare
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface BigInt {
   /** Convert to BigInt to string form in JSON.stringify */
   toJSON: () => string;

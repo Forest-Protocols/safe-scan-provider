@@ -2,6 +2,13 @@ services:
   db:
     image: postgres:16.4-bookworm
     restart: unless-stopped
+    healthcheck:
+      test: pg_isready -U postgres -d postgres # Username and database name
+      interval: 3s
+      start_interval: 3s
+      start_period: 0s
+      timeout: 10s
+      retries: 5
     networks:
       - daemon
     volumes:
@@ -15,11 +22,14 @@ services:
       context: .
     env_file:
       - .env
+      - path: .env.docker # If there is an additional env file to use for Docker
+        required: false
     volumes:
       - ./data:/daemon/data
     restart: unless-stopped
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - daemon
 

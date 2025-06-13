@@ -38,23 +38,28 @@ export type Resource = {
   ptAddress: Address;
 };
 
-export type DetailedOffer = Offer & {
-  details: Omit<OfferDetails, "deploymentParams" | "params"> & {
-    deploymentParams?: {
-      model?: string;
-    };
-    params: {
-      "Input Limit": {
-        value: number;
-        unit: string;
-      };
-      "Output Limit": {
-        value: number;
-        unit: string;
-      };
-      Features: string[];
-    };
+export type MedQAOfferDetails = Omit<
+  OfferDetails,
+  "deploymentParams" | "params"
+> & {
+  deploymentParams?: {
+    model?: string;
   };
+  params: {
+    "Input Limit": {
+      value: number;
+      unit: string;
+    };
+    "Output Limit": {
+      value: number;
+      unit: string;
+    };
+    Features: string[];
+  };
+};
+
+export type DetailedOffer = Offer & {
+  details?: string | MedQAOfferDetails;
 };
 
 export type ProviderPipeRouteHandler = (

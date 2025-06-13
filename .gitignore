@@ -1,8 +1,11 @@
-node_modules
 .vscode
 .env*
-!.env.*example
+node_modules
 dist
-data/providers.json
-
 volumes
+
+# Don't exclude example .env files
+!.env.*example
+
+# XMTP Database files
+data/*.db*

@@ -1,16 +1,17 @@
 import { rpcClient } from "@/clients";
+import { colorHex } from "@/color";
 import { config } from "@/config";
-import { DB } from "@/database/Database";
+import { DB } from "@/database/client";
 import { PipeErrorNotFound } from "@/errors/pipe/PipeErrorNotFound";
 import { logger } from "@/logger";
 import { pipeOperatorRoute, pipes, providerPipeRoute } from "@/pipe";
+import { cleanupHandlers } from "@/signal";
 import {
   DetailedOffer,
   ProviderPipeRouteHandler,
   Resource,
   ResourceDetails,
 } from "@/types";
-import { tryParseJSON } from "@/utils";
 import {
   addressSchema,
   PipeRouteHandler,
@@ -23,6 +24,8 @@ import {
   PipeResponseCode,
   Protocol,
   Registry,
+  tryParseJSON,
+  ProviderDetailsSchema,
 } from "@forest-protocols/sdk";
 import { yellow } from "ansis";
 import { readFileSync, statSync } from "fs";
@@ -58,7 +61,7 @@ export abstract class AbstractProvider<
 
     if (!providerConfig) {
       this.logger.error(
-        `Provider config not found for Provider tag "${providerTag}". Please check your data/providers.json file or environment variables`
+        `Provider config not found for Provider tag "${providerTag}". Please check your environment variables`
       );
       process.exit(1);
     }
@@ -92,11 +95,12 @@ export abstract class AbstractProvider<
       this.actorInfo.ownerAddr
     );
 
-    // TODO: Validate details schema
+    // `DB.upsertProvider` already checked the existence of the details file
+    // so we can directly destruct the return array.
     const [provDetailFile] = await DB.getDetailFiles([provider.detailsLink]);
 
-    // `DB.upsertProvider` already checked the existence of the details file
-    this.details = tryParseJSON(provDetailFile.content);
+    // Validate the details file structure
+    this.validateProviderDetails(provDetailFile.content);
 
     let ptAddress = providerConfig.protocolAddress;
     if (ptAddress === undefined) {
@@ -143,14 +147,27 @@ export abstract class AbstractProvider<
         }
       );
 
-      // Use dev env only for local and sepolia chains
+      // Initialize the pipe
       await pipes[this.actorInfo.operatorAddr].init(config.NODE_ENV);
 
-      ["SIGTERM", "SIGINT"].forEach((signal) =>
-        process.on(signal, () => {
-          pipes[this.actorInfo.operatorAddr].close();
-        })
-      );
+      // Add a handler to close the Pipe when the program is terminated
+      cleanupHandlers.push(async () => {
+        this.logger.info(
+          `Closing Pipe of operator ${colorHex(this.actorInfo.operatorAddr)}`
+        );
+        try {
+          await pipes[this.actorInfo.operatorAddr].close();
+          this.logger.info(
+            `Pipe of operator ${colorHex(this.actorInfo.operatorAddr)} closed`
+          );
+        } catch (error) {
+          this.logger.error(
+            `Error closing pipe of operator ${colorHex(
+              this.actorInfo.operatorAddr
+            )}: ${error}`
+          );
+        }
+      });
 
       this.logger.info(
         `Initialized Pipe for operator ${yellow.bold(
@@ -160,7 +177,7 @@ export abstract class AbstractProvider<
 
       // Setup operator specific endpoints
 
-      this.operatorRoute(PipeMethod.GET, "/spec", async (req) => {
+      this.operatorRoute(PipeMethod.GET, "/spec", async () => {
         try {
           const possibleSpecFiles = [
             "spec.yaml",
@@ -269,6 +286,32 @@ export abstract class AbstractProvider<
         };
       });
     }
+
+    // Re-initialize the logger with the new context that includes the Provider tag
+    this.logger = logger.child({
+      context: `${this.constructor.name}(${providerTag})`,
+    });
+  }
+
+  /**
+   * Parses and validates the given details file content as Provider details.
+   * @param content
+   */
+  private validateProviderDetails(content: string) {
+    const detailsObject = tryParseJSON(content);
+    if (!detailsObject) {
+      this.logger.error(`Provider details file is not a JSON file`);
+      process.exit(1);
+    }
+
+    const detailsValidation = ProviderDetailsSchema.safeParse(detailsObject);
+    if (!detailsValidation.success) {
+      this.logger.error(
+        `Provider details file is not in the expected format: ${detailsValidation.error.message}`
+      );
+      process.exit(1);
+    }
+    this.details = detailsValidation.data;
   }
 
   /**

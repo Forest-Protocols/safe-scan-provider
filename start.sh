@@ -4,5 +4,10 @@
 # Run migrations
 npm run db:migrate
 
+# Exit if the migration is failed
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+
 # Run daemon
-dotenvx run -- node dist/index.js
+exec node dist/index.js

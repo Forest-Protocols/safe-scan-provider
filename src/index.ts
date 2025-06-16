@@ -35,6 +35,7 @@ import {
 } from "./signal";
 import { isTermination } from "./utils/is-termination";
 import { ensureError } from "./utils/ensure-error";
+import { isAxiosError } from "axios";
 
 const CONFIG_LAST_PROCESSED_NEW_AGREEMENT_DATE =
   "LAST_PROCESSED_NEW_AGREEMENT_DATE";
@@ -71,6 +72,7 @@ class Program {
 
   noNewAgreementLog: Record<string, boolean> = {};
   noClosedAgreementLog: Record<string, boolean> = {};
+  indexerIsNotHealthyLog = false;
 
   constructor() {}
 
@@ -80,6 +82,21 @@ class Program {
       res.send("Running");
     });
     app.listen(config.PORT);
+  }
+
+  async isIndexerError(err: unknown) {
+    const error = ensureError(err);
+    if (isAxiosError(error)) {
+      const isHealthy = await this.indexer.isHealthy();
+
+      if (!isHealthy && !this.indexerIsNotHealthyLog) {
+        this.indexerIsNotHealthyLog = true;
+        logger.error("Indexer is not healthy, cannot fetch data from it");
+        return true;
+      }
+    }
+
+    return false;
   }
 
   async loadDetailFiles() {
@@ -383,6 +400,7 @@ class Program {
 
         page++;
       }
+      this.indexerIsNotHealthyLog = false;
 
       // Check if those Agreements are already in the database
       const existingAgreements = await DB.getResources(
@@ -439,7 +457,9 @@ class Program {
       }
     } catch (err) {
       const error = ensureError(err);
-      if (!isTermination(error)) {
+      const indexerError = await this.isIndexerError(error);
+
+      if (!indexerError && !isTermination(error)) {
         provider.logger.error(
           `Error while fetching the Agreements: ${error.stack}`
         );
@@ -473,6 +493,7 @@ class Program {
 
         page++;
       }
+      this.indexerIsNotHealthyLog = false;
 
       // Get the existing Agreements from the database
       const existingAgreements = await DB.getResources(
@@ -532,7 +553,9 @@ class Program {
       }
     } catch (err) {
       const error = ensureError(err);
-      if (!isTermination(error)) {
+      const indexerError = await this.isIndexerError(error);
+
+      if (!indexerError && !isTermination(error)) {
         provider.logger.error(
           `Error while fetching the Agreements: ${error.stack}`
         );
@@ -593,6 +616,7 @@ class Program {
 
           page++;
         }
+        this.indexerIsNotHealthyLog = false;
 
         // Filter the Agreements that don't have enough balance
         const agreementsToBeClosed = activeAgreements.filter(
@@ -618,11 +642,15 @@ class Program {
         }
       } catch (err) {
         const error = ensureError(err);
-        provider.logger.error(
-          `Error while checking balances of the Agreements@${colorHex(
-            provider.protocol.address
-          )}: ${error.stack}`
-        );
+        const indexerError = await this.isIndexerError(error);
+
+        if (!indexerError && !isTermination(error)) {
+          provider.logger.error(
+            `Error while checking balances of the Agreements@${colorHex(
+              provider.protocol.address
+            )}: ${error.stack}`
+          );
+        }
       }
     }
   }

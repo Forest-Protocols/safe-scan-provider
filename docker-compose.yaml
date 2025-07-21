@@ -27,6 +27,9 @@ services:
     volumes:
       - ./data:/daemon/data
     restart: unless-stopped
+    ports:
+      # Expose 100 ports within the range for the possible HTTP Pipes
+      - "1352-1452:1352-1452"
     depends_on:
       db:
         condition: service_healthy

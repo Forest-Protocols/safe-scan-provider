@@ -38,6 +38,7 @@ function parseEnv() {
       .string()
       .default("5m")
       .transform((value, ctx) => parseTime(value, ctx)),
+    HTTP_PIPE_PORT_OFFSET: z.coerce.number().default(1352),
   });
   const parsedEnv = environmentSchema.safeParse(process.env, {});
 

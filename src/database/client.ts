@@ -89,7 +89,10 @@ class Database {
 
   async getAllResourcesOfUser(ownerAddress: Address) {
     return await this.resourceQuery().where(
-      and(eq(schema.resourcesTable.ownerAddress, ownerAddress))
+      eq(
+        sql`LOWER(${schema.resourcesTable.ownerAddress})`,
+        ownerAddress.toLowerCase()
+      )
     );
   }
 

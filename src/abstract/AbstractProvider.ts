@@ -4,7 +4,7 @@ import { config } from "@/config";
 import { DB } from "@/database/client";
 import { PipeErrorNotFound } from "@/errors/pipe/PipeErrorNotFound";
 import { logger } from "@/logger";
-import { pipeOperatorRoute, pipes, providerPipeRoute } from "@/pipe";
+import { pipeOperatorRoute, pipes, pipeProviderRoute } from "@/pipe";
 import { cleanupHandlers } from "@/signal";
 import {
   DetailedOffer,
@@ -13,19 +13,21 @@ import {
   ResourceDetails,
 } from "@/types";
 import {
-  addressSchema,
   PipeRouteHandler,
   Provider,
   ProviderDetails,
   validateBodyOrParams,
   XMTPv3Pipe,
   Agreement,
-  PipeMethod,
-  PipeResponseCode,
   Protocol,
   Registry,
   tryParseJSON,
   ProviderDetailsSchema,
+  HTTPPipe,
+  AddressSchema,
+  PipeResponseCodes,
+  PipeMethods,
+  PipeMethodType,
 } from "@forest-protocols/sdk";
 import { yellow } from "ansis";
 import { readFileSync, statSync } from "fs";
@@ -131,11 +133,10 @@ export abstract class AbstractProvider<
       registryContractAddress: config.REGISTRY_ADDRESS,
     });
 
-    // Initialize pipe for this operator address if it is not instantiated yet.
+    // Initialize the Pipes for this Operator address if it is not initialized yet.
     if (!pipes[this.actorInfo.operatorAddr]) {
-      pipes[this.actorInfo.operatorAddr] = new XMTPv3Pipe(
-        providerConfig.operatorWalletPrivateKey,
-        {
+      pipes[this.actorInfo.operatorAddr] = {
+        xmtp: new XMTPv3Pipe(providerConfig.operatorWalletPrivateKey, {
           dbPath: join(
             process.cwd(),
             "data",
@@ -144,40 +145,71 @@ export abstract class AbstractProvider<
 
           // Doesn't matter what it is as long as it is something that we can use in the next client initialization
           encryptionKey: this.actorInfo.operatorAddr,
-        }
-      );
+        }),
+        http: new HTTPPipe(providerConfig.operatorWalletPrivateKey, {
+          port: providerConfig.operatorPipePort,
+        }),
+      };
 
-      // Initialize the pipe
-      await pipes[this.actorInfo.operatorAddr].init(config.NODE_ENV);
+      // Initialize the Pipes
+      await pipes[this.actorInfo.operatorAddr].xmtp.init(config.NODE_ENV);
+      await pipes[this.actorInfo.operatorAddr].http.init();
 
       // Add a handler to close the Pipe when the program is terminated
       cleanupHandlers.push(async () => {
         this.logger.info(
-          `Closing Pipe of operator ${colorHex(this.actorInfo.operatorAddr)}`
+          `Closing Pipes of operator ${colorHex(this.actorInfo.operatorAddr)}`
         );
-        try {
-          await pipes[this.actorInfo.operatorAddr].close();
-          this.logger.info(
-            `Pipe of operator ${colorHex(this.actorInfo.operatorAddr)} closed`
-          );
-        } catch (error) {
-          this.logger.error(
-            `Error closing pipe of operator ${colorHex(
-              this.actorInfo.operatorAddr
-            )}: ${error}`
-          );
-        }
+        await Promise.all([
+          pipes[this.actorInfo.operatorAddr].xmtp
+            .close()
+            .then(() => {
+              this.logger.info(
+                `XMTP pipe of operator ${colorHex(
+                  this.actorInfo.operatorAddr
+                )} closed`
+              );
+            })
+            .catch((err) => {
+              this.logger.error(
+                `Error closing XMTP pipe of operator ${colorHex(
+                  this.actorInfo.operatorAddr
+                )}: ${err}`
+              );
+            }),
+          pipes[this.actorInfo.operatorAddr].http
+            .close()
+            .then(() => {
+              this.logger.info(
+                `HTTP pipe of operator ${colorHex(
+                  this.actorInfo.operatorAddr
+                )} closed`
+              );
+            })
+            .catch((err) => {
+              this.logger.error(
+                `Error closing HTTP pipe of operator ${colorHex(
+                  this.actorInfo.operatorAddr
+                )}: ${err}`
+              );
+            }),
+        ]);
       });
 
       this.logger.info(
-        `Initialized Pipe for operator ${yellow.bold(
+        `Initialized XMTP Pipe for operator ${yellow.bold(
           this.actorInfo.operatorAddr
         )}`
       );
 
-      // Setup operator specific endpoints
+      this.logger.info(
+        `Initialized HTTP Pipe for operator ${yellow.bold(
+          this.actorInfo.operatorAddr
+        )} on 0.0.0.0:${providerConfig.operatorPipePort}`
+      );
 
-      this.operatorRoute(PipeMethod.GET, "/spec", async () => {
+      // Setup operator specific endpoints
+      this.operatorRoute(PipeMethods.GET, "/spec", async () => {
         try {
           const possibleSpecFiles = [
             "spec.yaml",
@@ -194,7 +226,7 @@ export abstract class AbstractProvider<
                 encoding: "utf-8",
               }).toString();
               return {
-                code: PipeResponseCode.OK,
+                code: PipeResponseCodes.OK,
                 body: content,
               };
             }
@@ -210,16 +242,23 @@ export abstract class AbstractProvider<
       /**
        * Retrieves detail file(s)
        */
-      this.operatorRoute(PipeMethod.GET, "/details", async (req) => {
-        const body = validateBodyOrParams(req.body, z.array(z.string()).min(1));
-        const files = await DB.getDetailFiles(body);
+      this.operatorRoute(PipeMethods.GET, "/details", async (req) => {
+        // If there is a query param, use it. Otherwise, use the body.
+        let source: any[] = req.body;
+
+        if (req.params?.cids?.length > 0) {
+          source = req.params!.cids;
+        }
+
+        const cids = validateBodyOrParams(source, z.array(z.string()).min(1));
+        const files = await DB.getDetailFiles(cids);
 
         if (files.length == 0) {
           throw new PipeErrorNotFound("Detail files");
         }
 
         return {
-          code: PipeResponseCode.OK,
+          code: PipeResponseCodes.OK,
           body: files.map((file) => file.content),
         };
       });
@@ -227,37 +266,32 @@ export abstract class AbstractProvider<
       /**
        * Retrieve details (e.g credentials) of resource(s).
        */
-      this.operatorRoute(PipeMethod.GET, "/resources", async (req) => {
+      this.operatorRoute(PipeMethods.GET, "/resources", async (req) => {
         const params = validateBodyOrParams(
           req.body || req.params,
           z.object({
             /** ID of the resource. */
-            id: z.number().optional(),
+            id: z.coerce.number().optional(),
 
             /** Protocol address that the resource created in. */
-            pt: addressSchema.optional(), // A pre-defined Zod schema for smart contract addresses.
-            pc: addressSchema.optional(), // Alternative name for `pt` parameter
+            pt: AddressSchema.optional(), // A pre-defined Zod schema for smart contract addresses.
           })
         );
-
-        // If `pc` alias is given, use it.
-        if (params.pc) {
-          params.pt = params.pc;
-        }
 
         // If not both of them are given, send all resources of the requester
         if (params.id === undefined || params.pt === undefined) {
           return {
-            code: PipeResponseCode.OK,
+            code: PipeResponseCodes.OK,
             body: await DB.getAllResourcesOfUser(req.requester as Address),
           };
         }
 
-        // NOTE:
-        // Since XMTP has its own authentication layer, we don't need to worry about
-        // if this request really sent by the owner of the resource. So if the sender is
-        // different from owner of the resource, basically the resource won't be found because
-        // we are looking to the database with agreement id + requester address + protocol address.
+        // Since the Pipe implementations have wallet address verification, we don't need to worry about
+        // if this request really sent by the owner of the resource. In case of the sender is
+        // different from the owner of the resource, the resource won't be able to found in the Provider's
+        // database because resources are stored in the database as:
+        //  resource id <-> owner address <-> protocol address
+        // pairs. `.getResource` handles all these checks.
         const resource = await DB.getResource(
           params.id,
           req.requester,
@@ -281,7 +315,7 @@ export abstract class AbstractProvider<
         resource.details = details; // Use filtered details
 
         return {
-          code: PipeResponseCode.OK,
+          code: PipeResponseCodes.OK,
           body: resource,
         };
       });
@@ -349,18 +383,18 @@ export abstract class AbstractProvider<
    * Note: Requests that made to this route has to include either `body.providerId` or `params.providerId` field that points to the provider's ID.
    */
   protected route(
-    method: PipeMethod,
+    method: PipeMethodType,
     path: `/${string}`,
     handler: ProviderPipeRouteHandler
   ) {
-    providerPipeRoute(this, method, path, handler);
+    pipeProviderRoute(this, method, path, handler);
   }
 
   /**
    * Setups a route handler for the provider's operator.
    */
   protected operatorRoute(
-    method: PipeMethod,
+    method: PipeMethodType,
     path: `/${string}`,
     handler: PipeRouteHandler
   ) {

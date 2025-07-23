@@ -84,7 +84,13 @@ class Program {
     app.listen(config.PORT);
   }
 
-  async isIndexerError(err: unknown) {
+  /**
+   * Checks if the Indexer is healthy if the given error is an Axios error.
+   * Logs an error message only once if it is not healthy.
+   * Returns `true` if the error was an Axios error and the Indexer is unhealthy.
+   * Returns `false` if the error was not an Axios error or the Indexer is healthy.
+   */
+  async checkIndexerHealthy(err: unknown) {
     const error = ensureError(err);
     if (isAxiosError(error)) {
       const isHealthy = await this.indexer.isHealthy();
@@ -92,8 +98,8 @@ class Program {
       if (!isHealthy && !this.indexerIsNotHealthyLog) {
         this.indexerIsNotHealthyLog = true;
         logger.error("Indexer is not healthy, cannot fetch data from it");
-        return true;
       }
+      return true;
     }
 
     return false;
@@ -457,7 +463,7 @@ class Program {
       }
     } catch (err) {
       const error = ensureError(err);
-      const indexerError = await this.isIndexerError(error);
+      const indexerError = await this.checkIndexerHealthy(error);
 
       if (!indexerError && !isTermination(error)) {
         provider.logger.error(
@@ -553,7 +559,7 @@ class Program {
       }
     } catch (err) {
       const error = ensureError(err);
-      const indexerError = await this.isIndexerError(error);
+      const indexerError = await this.checkIndexerHealthy(error);
 
       if (!indexerError && !isTermination(error)) {
         provider.logger.error(
@@ -642,7 +648,7 @@ class Program {
         }
       } catch (err) {
         const error = ensureError(err);
-        const indexerError = await this.isIndexerError(error);
+        const indexerError = await this.checkIndexerHealthy(error);
 
         if (!indexerError && !isTermination(error)) {
           provider.logger.error(

@@ -63,6 +63,7 @@ function parseProviderConfig() {
     providerWalletPrivateKey: PrivateKeySchema,
     billingWalletPrivateKey: PrivateKeySchema,
     operatorWalletPrivateKey: PrivateKeySchema,
+    operatorPipePort: z.coerce.number().positive(),
     protocolAddress: addressSchema.optional(),
   });
 
@@ -70,47 +71,39 @@ function parseProviderConfig() {
     [providerTag: string]: z.infer<typeof providerSchema>;
   } = {};
 
-  const pkRegex = /^(PROVIDER|BILLING|OPERATOR)_PRIVATE_KEY_([\w]+)$/;
-  const ptAddressRegex = /^PROTOCOL_ADDRESS_([\w]+)$/;
+  const pkRegex =
+    /^(?<keyType>((PROVIDER|BILLING|OPERATOR)_PRIVATE_KEY)|OPERATOR_PIPE_PORT|PROTOCOL_ADDRESS)_(?<providerTag>[\w]+)$/;
   for (const [name, value] of Object.entries(process.env)) {
     const match = name.match(pkRegex);
     if (match) {
-      const keyType = match[1];
-      const providerTag = match[2];
+      const keyType = match.groups?.keyType as string;
+      const providerTag = match.groups?.providerTag as string;
 
       if (!providers[providerTag]) {
         providers[providerTag] = {
           billingWalletPrivateKey: "0x",
           operatorWalletPrivateKey: "0x",
           providerWalletPrivateKey: "0x",
+          operatorPipePort: 0,
         };
       }
 
       switch (keyType) {
-        case "PROVIDER":
+        case "PROVIDER_PRIVATE_KEY":
           providers[providerTag].providerWalletPrivateKey = value as Address;
           break;
-        case "OPERATOR":
+        case "OPERATOR_PRIVATE_KEY":
           providers[providerTag].operatorWalletPrivateKey = value as Address;
           break;
-        case "BILLING":
+        case "BILLING_PRIVATE_KEY":
           providers[providerTag].billingWalletPrivateKey = value as Address;
           break;
-      }
-    } else {
-      const ptMatch = name.match(ptAddressRegex);
-      if (ptMatch) {
-        const providerTag = ptMatch[1];
-
-        if (!providers[providerTag]) {
-          providers[providerTag] = {
-            billingWalletPrivateKey: "0x",
-            operatorWalletPrivateKey: "0x",
-            providerWalletPrivateKey: "0x",
-          };
-        }
-
-        providers[providerTag].protocolAddress = value as Address;
+        case "OPERATOR_PIPE_PORT":
+          providers[providerTag].operatorPipePort = parseInt(value as string);
+          break;
+        case "PROTOCOL_ADDRESS":
+          providers[providerTag].protocolAddress = value as Address;
+          break;
       }
     }
   }

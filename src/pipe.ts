@@ -1,26 +1,35 @@
 import {
+  HTTPPipe,
   PipeError,
   PipeMethod,
-  PipeResponseCode,
+  PipeMethodType,
+  PipeRequest,
+  PipeResponseCodes,
   PipeRouteHandler,
   validateBodyOrParams,
   XMTPv3Pipe,
 } from "@forest-protocols/sdk";
 import { AbstractProvider } from "./abstract/AbstractProvider";
-import { z } from "zod";
 import { ProviderPipeRouteHandler } from "./types";
 import { logger } from "./logger";
 import { colorHex, colorWord } from "./color";
+import { z } from "zod";
 
 /**
  * Operator pipes in this daemon
  */
 export const pipes: {
-  [operatorAddr: string]: XMTPv3Pipe;
+  [operatorAddr: string]: {
+    // NOTE: XMTP Pipe will be removed in the future
+    xmtp: XMTPv3Pipe;
+    http: HTTPPipe;
+  };
 } = {};
 
 /**
  * Routes defined by providers
+ * TODO: We don't need this route handling per Provider ID. We can simply change the path to include the provider ID such as `/providers/1/<path>`.
+ * Ah, why I haven't thought of this before?! - mdk
  */
 export const providerRoutes: {
   [providerId: string]: {
@@ -31,12 +40,13 @@ export const providerRoutes: {
 } = {};
 
 /**
- * Setups a pipe route in the operator Pipe for the given provider.
- * Uses either `body.providerId` or `params.providerId` from the request to find correct handler function.
+ * Setups a Pipe route in the Operator's Pipe of the given Provider.
+ * The requests that are sent to this route must include the
+ * `providerId` field either in the body or params.
  */
-export function providerPipeRoute(
+export function pipeProviderRoute(
   provider: AbstractProvider,
-  method: PipeMethod,
+  method: PipeMethodType,
   path: `/${string}`,
   handler: ProviderPipeRouteHandler
 ) {
@@ -71,7 +81,7 @@ export function providerPipeRoute(
       }
 
       if (providerId === undefined) {
-        throw new PipeError(PipeResponseCode.NOT_FOUND, {
+        throw new PipeError(PipeResponseCodes.BAD_REQUEST, {
           message: `Missing "providerId"`,
         });
       }
@@ -82,7 +92,7 @@ export function providerPipeRoute(
 
       // Throw error if there is no handler defined in this pipe for the given provider
       if (!providerRouteHandler) {
-        throw new PipeError(PipeResponseCode.NOT_FOUND, {
+        throw new PipeError(PipeResponseCodes.NOT_FOUND, {
           message: `${method} ${req.path} not found`,
         });
       }
@@ -96,19 +106,20 @@ export function providerPipeRoute(
 }
 
 /**
- * Setups a new route handler for the given operator.
+ * Setups a Pipe route in the given Operator's Pipe.
  */
 export function pipeOperatorRoute(
   operatorAddress: string,
-  method: PipeMethod,
+  method: PipeMethodType,
   path: string,
-  handler: PipeRouteHandler
+  handler: PipeRouteHandler,
+  pipe?: "xmtp" | "http"
 ) {
   if (!pipes[operatorAddress]) {
-    throw new Error(`There is no pipe for ${operatorAddress}`);
+    throw new Error(`There is no initialized Pipe for ${operatorAddress}`);
   }
 
-  pipes[operatorAddress].route(method, path, async (req) => {
+  const handlerWrapper = async (req: PipeRequest) => {
     logger.info(
       `Got Pipe request with id ${colorWord(req.id)} from ${colorHex(
         req.requester
@@ -130,5 +141,17 @@ export function pipeOperatorRoute(
       );
       throw error;
     }
-  });
+  };
+
+  if (pipe === undefined || pipe === "xmtp") {
+    pipes[operatorAddress].xmtp.route(
+      method as PipeMethod,
+      path,
+      handlerWrapper
+    );
+  }
+
+  if (pipe === undefined || pipe === "http") {
+    pipes[operatorAddress].http.route(method, path, handlerWrapper);
+  }
 }

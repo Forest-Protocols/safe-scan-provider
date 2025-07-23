@@ -135,9 +135,6 @@ export abstract class AbstractProvider<
 
     // Initialize the Pipes for this Operator address if it is not initialized yet.
     if (!pipes[this.actorInfo.operatorAddr]) {
-      const httpPipePort =
-        config.HTTP_PIPE_PORT_OFFSET + Object.keys(pipes).length + 1;
-
       pipes[this.actorInfo.operatorAddr] = {
         xmtp: new XMTPv3Pipe(providerConfig.operatorWalletPrivateKey, {
           dbPath: join(
@@ -150,7 +147,7 @@ export abstract class AbstractProvider<
           encryptionKey: this.actorInfo.operatorAddr,
         }),
         http: new HTTPPipe(providerConfig.operatorWalletPrivateKey, {
-          port: httpPipePort,
+          port: providerConfig.operatorPipePort,
         }),
       };
 
@@ -208,7 +205,7 @@ export abstract class AbstractProvider<
       this.logger.info(
         `Initialized HTTP Pipe for operator ${yellow.bold(
           this.actorInfo.operatorAddr
-        )} on 0.0.0.0:${httpPipePort}`
+        )} on 0.0.0.0:${providerConfig.operatorPipePort}`
       );
 
       // Setup operator specific endpoints

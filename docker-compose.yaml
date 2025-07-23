@@ -28,8 +28,8 @@ services:
       - ./data:/daemon/data
     restart: unless-stopped
     ports:
-      # Expose 100 ports within the range for the possible HTTP Pipes
-      - "1352-1452:1352-1452"
+      # TODO: Expose the ports for the HTTP Pipes
+      - 29167:29167
     depends_on:
       db:
         condition: service_healthy

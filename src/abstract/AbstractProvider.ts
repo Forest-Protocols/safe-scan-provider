@@ -43,8 +43,6 @@ import { z } from "zod";
 export abstract class AbstractProvider<
   T extends ResourceDetails = ResourceDetails
 > {
-  private static pipeInstanceIndex = 0;
-
   registry!: Registry;
 
   protocol!: Protocol;
@@ -138,7 +136,7 @@ export abstract class AbstractProvider<
     // Initialize the Pipes for this Operator address if it is not initialized yet.
     if (!pipes[this.actorInfo.operatorAddr]) {
       const httpPipePort =
-        config.HTTP_PIPE_PORT_OFFSET + AbstractProvider.pipeInstanceIndex + 1;
+        config.HTTP_PIPE_PORT_OFFSET + Object.keys(pipes).length + 1;
 
       pipes[this.actorInfo.operatorAddr] = {
         xmtp: new XMTPv3Pipe(providerConfig.operatorWalletPrivateKey, {
@@ -155,9 +153,6 @@ export abstract class AbstractProvider<
           port: httpPipePort,
         }),
       };
-
-      // Increment the Pipe instance index for the next provider
-      AbstractProvider.pipeInstanceIndex++;
 
       // Initialize the Pipes
       await pipes[this.actorInfo.operatorAddr].xmtp.init(config.NODE_ENV);

@@ -382,30 +382,21 @@ class Program {
 
   async checkNewAgreements(provider: AbstractProvider) {
     try {
-      let page = 1;
-      const allAgreements: IndexerAgreement[] = [];
       const lastProcessedNewAgreementDate = await DB.getConfig(
         CONFIG_LAST_PROCESSED_NEW_AGREEMENT_DATE
       );
-
-      while (true) {
-        const res = await this.indexer.getAgreements({
-          providerAddress: provider.actorInfo.ownerAddr,
-          status: Status.Active,
-          protocolAddress: provider.protocol.address,
-          limit: 100,
-          page,
+      const allAgreements = await this.indexer
+        .getAgreements({
+          providerAddress:
+            provider.actorInfo.ownerAddr.toLowerCase() as Address,
+          protocolAddress: provider.protocol.address.toLowerCase() as Address,
           startTs: lastProcessedNewAgreementDate,
-        });
+          status: Status.Active,
+          autoPaginate: true,
+          limit: 100,
+        })
+        .then((res) => res.data);
 
-        allAgreements.push(...res.data);
-
-        if (res.pagination.totalPages <= page) {
-          break;
-        }
-
-        page++;
-      }
       this.indexerIsNotHealthyLog = false;
 
       // Check if those Agreements are already in the database
@@ -475,30 +466,21 @@ class Program {
 
   async checkClosedAgreements(provider: AbstractProvider) {
     try {
-      let page = 1;
-      const allAgreements: IndexerAgreement[] = [];
       const lastProcessedClosedAgreementDate = await DB.getConfig(
         CONFIG_LAST_PROCESSED_CLOSED_AGREEMENT_DATE
       );
-
-      while (true) {
-        const res = await this.indexer.getAgreements({
-          providerAddress: provider.actorInfo.ownerAddr,
-          status: Status.NotActive,
-          protocolAddress: provider.protocol.address,
-          limit: 100,
-          page,
+      const allAgreements = await this.indexer
+        .getAgreements({
+          providerAddress:
+            provider.actorInfo.ownerAddr.toLowerCase() as Address,
+          protocolAddress: provider.protocol.address.toLowerCase() as Address,
           startTs: lastProcessedClosedAgreementDate,
-        });
+          status: Status.NotActive,
+          autoPaginate: true,
+          limit: 100,
+        })
+        .then((res) => res.data);
 
-        allAgreements.push(...res.data);
-
-        if (res.pagination.totalPages <= page) {
-          break;
-        }
-
-        page++;
-      }
       this.indexerIsNotHealthyLog = false;
 
       // Get the existing Agreements from the database
@@ -602,26 +584,17 @@ class Program {
     // Check all Agreements of the Providers
     for (const [, provider] of Object.entries(this.providers)) {
       try {
-        let page = 1;
-        const activeAgreements: IndexerAgreement[] = [];
-
-        while (true) {
-          const res = await this.indexer.getAgreements({
-            providerAddress: provider.actorInfo.ownerAddr,
+        const activeAgreements: IndexerAgreement[] = await this.indexer
+          .getAgreements({
+            providerAddress:
+              provider.actorInfo.ownerAddr.toLowerCase() as Address,
+            protocolAddress: provider.protocol.address.toLowerCase() as Address,
             status: Status.Active,
-            protocolAddress: provider.protocol.address,
             limit: 100,
-            page,
-          });
+            autoPaginate: true,
+          })
+          .then((res) => res.data);
 
-          activeAgreements.push(...res.data);
-
-          if (res.pagination.totalPages <= page) {
-            break;
-          }
-
-          page++;
-        }
         this.indexerIsNotHealthyLog = false;
 
         // Filter the Agreements that don't have enough balance

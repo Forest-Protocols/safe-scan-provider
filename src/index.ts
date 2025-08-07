@@ -567,11 +567,10 @@ class Program {
         }
       }
 
-      try {
-        await sleep(config.AGREEMENT_CHECK_INTERVAL, abortController.signal);
-      } catch {
-        // Termination signal is received
-      }
+      await sleep(
+        config.AGREEMENT_CHECK_INTERVAL,
+        abortController.signal
+      ).catch(() => {}); // Termination signal is received
     }
 
     logger.info("Waiting for cleanup...");
@@ -636,9 +635,19 @@ class Program {
 }
 
 const program = new Program();
-program.main().then(() => {
+program
+  .main()
+  .then(() => {
   logger.warning("See ya...");
   process.exit(process.exitCode || 0);
+  })
+  .catch((err) => {
+    const error = ensureError(err);
+    logger.error(`Something went wrong: ${error.message}`);
+    if (config.NODE_ENV === "dev") {
+      logger.error(`Stack: ${error.stack}`);
+    }
+    process.exit(1);
 });
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

@@ -729,11 +729,11 @@ class Program {
         }
       }
 
-      // If there is no event found in the block range, increase the highest
-      // processed block with the processed block count because now we know that
-      // in that block range there is nothing that we can process
+      // If there is no event found in the block range, move to the next range
+      // because now we know that in that block range there is nothing that we can process
       if (highestProcessedBlock < this.lastProcessedBlock) {
-        highestProcessedBlock += config.BLOCK_PROCESS_RANGE;
+        highestProcessedBlock =
+          this.lastProcessedBlock + config.BLOCK_PROCESS_RANGE;
       }
 
       // Update the highest processed block since we've

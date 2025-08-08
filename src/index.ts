@@ -729,15 +729,20 @@ class Program {
         }
       }
 
+      // If there is no event found in the block range, increase the highest
+      // processed block with the processed block count because now we know that
+      // in that block range there is nothing that we can process
+      if (highestProcessedBlock < this.lastProcessedBlock) {
+        highestProcessedBlock += config.BLOCK_PROCESS_RANGE;
+      }
+
       // Update the highest processed block since we've
       // already processed all of them for all the Providers
-      if (highestProcessedBlock > this.lastProcessedBlock) {
-        this.lastProcessedBlock = highestProcessedBlock;
-        await DB.setConfig(
-          CONFIG_LAST_PROCESSED_BLOCK,
-          this.lastProcessedBlock.toString()
-        );
-      }
+      this.lastProcessedBlock = highestProcessedBlock;
+      await DB.setConfig(
+        CONFIG_LAST_PROCESSED_BLOCK,
+        this.lastProcessedBlock.toString()
+      );
 
       await sleep(
         config.AGREEMENT_CHECK_INTERVAL,

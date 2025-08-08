@@ -36,7 +36,7 @@ import {
 import { isTermination } from "./utils/is-termination";
 import { ensureError } from "./utils/ensure-error";
 import { isAxiosError } from "axios";
-import { indexerClient } from "./clients";
+import { indexerClient, rpcClient } from "./clients";
 import { providers } from "./providers";
 
 // Key for tracking "indexer not healthy" logs
@@ -663,7 +663,8 @@ class Program {
     };
 
     this.lastProcessedBlock = BigInt(
-      (await DB.getConfig(CONFIG_LAST_PROCESSED_BLOCK)) || 0n
+      (await DB.getConfig(CONFIG_LAST_PROCESSED_BLOCK)) ||
+        (await rpcClient.getBlockNumber())
     );
     while (!abortController.signal.aborted) {
       let highestProcessedBlock = 0n;

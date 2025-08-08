@@ -38,6 +38,7 @@ function parseEnv() {
       .string()
       .default("5m")
       .transform((value, ctx) => parseTime(value, ctx)),
+    BLOCK_PROCESS_RANGE: z.coerce.bigint().default(1000n),
   });
   const parsedEnv = environmentSchema.safeParse(process.env, {});
 

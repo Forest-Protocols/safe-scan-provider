@@ -1,14 +1,13 @@
+import { and, eq, getTableColumns, inArray, not, or, sql } from "drizzle-orm";
 import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
 import { config } from "@/config";
 import { DeploymentStatus, generateCID } from "@forest-protocols/sdk";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { PipeErrorNotFound } from "@/errors/pipe/PipeErrorNotFound";
 import { Address } from "viem/accounts";
 import { Resource } from "@/types";
 import { logger } from "@/logger";
+import { cleanupHandlers } from "@/signal";
 import * as schema from "./schema";
 import pg from "pg";
-import { cleanupHandlers } from "@/signal";
 
 export type DatabaseClientType = NodePgDatabase<typeof schema>;
 
@@ -98,8 +97,15 @@ class Database {
 
   async getResources(ids: number[]) {
     return await this.client
-      .select()
+      .select({
+        ...getTableColumns(schema.resourcesTable),
+        providerAddress: schema.providersTable.ownerAddress,
+      })
       .from(schema.resourcesTable)
+      .innerJoin(
+        schema.providersTable,
+        eq(schema.resourcesTable.providerId, schema.providersTable.id)
+      )
       .where(inArray(schema.resourcesTable.id, ids));
   }
 
@@ -201,25 +207,132 @@ class Database {
     const [pt] = await this.client
       .select()
       .from(schema.protocolsTable)
-      .where(eq(schema.protocolsTable.address, address?.toLowerCase()));
+      .where(eq(schema.protocolsTable.address, address));
 
     return pt;
   }
 
-  async getProvider(ownerAddress: string) {
+  async getProvider(ownerAddress: Address) {
     const [provider] = await this.client
       .select()
       .from(schema.providersTable)
       .where(eq(schema.providersTable.ownerAddress, ownerAddress));
 
-    if (!provider) {
-      throw new PipeErrorNotFound(`Provider ${ownerAddress}`);
-    }
-
     return provider;
   }
 
+  async getVirtualProvidersByGatewayProviderId(id: number) {
+    return await this.client
+      .select()
+      .from(schema.providersTable)
+      .where(eq(schema.providersTable.gatewayProviderId, id));
+  }
+
+  async saveVirtualProviderOfferConfiguration(params: {
+    offerId: number;
+    protocolAddress: Address;
+    configuration: any;
+  }) {
+    await this.client.transaction(async (tx) => {
+      const [protocol] = await tx
+        .select({ id: schema.protocolsTable.id })
+        .from(schema.protocolsTable)
+        .where(eq(schema.protocolsTable.address, params.protocolAddress));
+
+      if (!protocol) {
+        throw new Error(
+          `Protocol ${params.protocolAddress} not found while inserting Virtual Provider Offer (ID: ${params.offerId}) configuration`
+        );
+      }
+
+      await tx.insert(schema.virtualProviderOfferConfigurations).values({
+        id: params.offerId,
+        ptAddressId: protocol.id,
+        configuration: params.configuration,
+      });
+    });
+  }
+
+  async updateVirtualProviderConfiguration(
+    offerId: number,
+    protocolAddress: Address,
+    configuration: any
+  ) {
+    const protocol = await this.getProtocol(
+      protocolAddress.toLowerCase() as Address
+    );
+
+    if (!protocol) {
+      throw new Error(`Protocol not found`);
+    }
+
+    await this.client
+      .update(schema.virtualProviderOfferConfigurations)
+      .set({
+        configuration,
+      })
+      .where(
+        and(
+          eq(
+            schema.virtualProviderOfferConfigurations.ptAddressId,
+            protocol.id
+          ),
+          eq(schema.virtualProviderOfferConfigurations.id, offerId)
+        )
+      );
+  }
+
+  async getVirtualProviderConfiguration(
+    offerId: number,
+    protocolAddress: Address
+  ) {
+    const protocol = await this.getProtocol(
+      protocolAddress.toLowerCase() as Address
+    );
+    if (!protocol) {
+      return;
+    }
+
+    const [row] = await this.client
+      .select()
+      .from(schema.virtualProviderOfferConfigurations)
+      .where(
+        and(
+          eq(schema.virtualProviderOfferConfigurations.id, offerId),
+          eq(schema.virtualProviderOfferConfigurations.ptAddressId, protocol.id)
+        )
+      );
+
+    return row?.configuration;
+  }
+
+  async insertDetailFile(content: string) {
+    const cid = await generateCID(content);
+    const [value] = await this.client
+      .insert(schema.detailFilesTable)
+      .values({
+        cid: cid.toString(),
+        content,
+      })
+      .onConflictDoUpdate({
+        target: [schema.detailFilesTable.cid],
+        set: {
+          cid: cid.toString(),
+          content,
+        },
+      })
+      .returning();
+
+    return value!.cid;
+  }
+
+  /**
+   * @deprecated Use `syncDetailFiles` instead
+   */
   async saveDetailFiles(contents: string[]) {
+    return this.syncDetailFiles(contents);
+  }
+  async syncDetailFiles(contents: string[]) {
     const values: schema.DbDetailFileInsert[] = [];
 
     for (const content of contents) {
@@ -231,51 +344,51 @@ class Database {
     }
 
     await this.client.transaction(async (tx) => {
-      await tx.delete(schema.detailFilesTable);
-
-      await tx
-        .insert(schema.detailFilesTable)
-        .values(values)
-        .onConflictDoNothing();
-    });
-  }
-
-  async upsertProvider(id: number, detailsLink: string, ownerAddress: Address) {
-    ownerAddress = ownerAddress.toLowerCase() as Address;
-    await this.client.transaction(async (tx) => {
-      const [existingProvider] = await tx
-        .select()
-        .from(schema.providersTable)
-        .where(
-          and(
-            eq(schema.providersTable.ownerAddress, ownerAddress),
-            eq(schema.providersTable.id, id)
+      // Only delete detail files that are not given
+      await tx.delete(schema.detailFilesTable).where(
+        not(
+          inArray(
+            schema.detailFilesTable.cid,
+            values.map((v) => v.cid)
           )
-        );
+        )
+      );
 
-      const [detailFile] = await tx
-        .select({
-          id: schema.detailFilesTable.id,
-        })
-        .from(schema.detailFilesTable)
-        .where(eq(schema.detailFilesTable.cid, detailsLink));
-
-      if (!detailFile) {
-        throw new Error(
-          `Details file not found for Provider ${id}. Please be sure you've placed the details of the provider into "data/details/[filename].json"`
-        );
-      }
-
-      if (existingProvider) {
-        // TODO: Update provider
+      if (values.length === 0) {
         return;
       }
 
-      await tx.insert(schema.providersTable).values({
-        id,
-        ownerAddress: ownerAddress,
-      });
+      // Insert them
+      await tx
+        .insert(schema.detailFilesTable)
+        .values(values)
+        .onConflictDoNothing(); // skip the ones that already presented
     });
+  }
+
+  async saveProvider(
+    id: number,
+    ownerAddress: Address,
+    isVirtual?: boolean,
+    gatewayProviderId?: number
+  ) {
+    ownerAddress = ownerAddress.toLowerCase() as Address;
+    await this.client
+      .insert(schema.providersTable)
+      .values({
+        id,
+        ownerAddress,
+        isVirtual,
+        gatewayProviderId,
+      })
+      .onConflictDoUpdate({
+        target: [schema.providersTable.id],
+        set: {
+          ownerAddress,
+          isVirtual,
+          gatewayProviderId,
+        },
+      });
   }
 
   /**
@@ -287,7 +400,7 @@ class Database {
       const [pt] = await tx
         .select()
         .from(schema.protocolsTable)
-        .where(eq(schema.protocolsTable.address, address.toLowerCase()));
+        .where(eq(schema.protocolsTable.address, address));
 
       const [detailFile] = await tx
         .select({
@@ -308,7 +421,7 @@ class Database {
       }
 
       await tx.insert(schema.protocolsTable).values({
-        address: address.toLowerCase(),
+        address,
       });
     });
   }

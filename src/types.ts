@@ -1,10 +1,4 @@
-import {
-  DeploymentStatus,
-  Offer,
-  OfferDetails,
-  PipeRequest,
-  PipeRouteHandlerResponse,
-} from "@forest-protocols/sdk";
+import { DeploymentStatus, Offer, OfferDetails } from "@forest-protocols/sdk";
 import { Address } from "viem";
 
 /**
@@ -41,7 +35,3 @@ export type Resource = {
 export type DetailedOffer = Offer & {
   details?: OfferDetails | string;
 };
-
-export type ProviderPipeRouteHandler = (
-  req: PipeRequest & { providerId: number }
-) => Promise<PipeRouteHandlerResponse | void> | PipeRouteHandlerResponse | void;

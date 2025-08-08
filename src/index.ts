@@ -2,7 +2,7 @@
 import {
   Agreement,
   DeploymentStatus,
-  Indexer,
+  GetAgreementsOptions,
   IndexerAgreement,
   Offer,
   sleep,
@@ -14,7 +14,6 @@ import { DB } from "./database/client";
 import { logger } from "./logger";
 import { AbstractProvider } from "./abstract/AbstractProvider";
 import * as ansis from "ansis";
-import { MainProviderImplementation } from "./protocol/provider";
 import {
   adjectives,
   animals,
@@ -24,6 +23,7 @@ import {
 import { join } from "path";
 import { readdirSync, readFileSync, statSync } from "fs";
 import { DetailedOffer } from "./types";
+import { indexerAgreementToAgreement } from "./utils/indexer-agreement-to-agreement";
 import express from "express";
 import { config } from "./config";
 import { colorHex, colorNumber, colorWord } from "./color";
@@ -36,43 +36,35 @@ import {
 import { isTermination } from "./utils/is-termination";
 import { ensureError } from "./utils/ensure-error";
 import { isAxiosError } from "axios";
+import { indexerClient } from "./clients";
+import { providers } from "./providers";
 
-const CONFIG_LAST_PROCESSED_NEW_AGREEMENT_DATE =
-  "LAST_PROCESSED_NEW_AGREEMENT_DATE";
-const CONFIG_LAST_PROCESSED_CLOSED_AGREEMENT_DATE =
-  "LAST_PROCESSED_CLOSED_AGREEMENT_DATE";
+// Key for tracking "indexer not healthy" logs
+const LOG_TRACK_INDEXER_HEALTH = "indexer-health";
 
-function indexerAgreementToAgreement(
-  agreement: IndexerAgreement,
-  offerId: number
-) {
-  return {
-    id: agreement.id,
-    balance: BigInt(agreement.balance),
-    endTs: agreement.endTs
-      ? BigInt(new Date(agreement.endTs).getTime() / 1000)
-      : 0n,
-    offerId,
-    provClaimedAmount: BigInt(agreement.provClaimedAmount),
-    provClaimedTs: BigInt(new Date(agreement.provClaimedTs).getTime() / 1000),
-    startTs: BigInt(new Date(agreement.startTs).getTime() / 1000),
-    status: agreement.status,
-    userAddr: agreement.userAddress,
-  };
-}
+// Configuration key to keep track of latest processed block
+const CONFIG_LAST_PROCESSED_BLOCK = "LAST_PROCESSED_BLOCK";
 
 class Program {
+  /**
+   * @deprecated Use `providers` object from `src/providers.ts` instead
+   */
   providers = {
-    main: new MainProviderImplementation(),
+    ...providers,
   };
 
-  indexer = new Indexer({
-    baseURL: config.INDEXER_ENDPOINT,
-  });
+  /**
+   * Keeps track of the error logs via boolean values
+   * and string keys to log them only once.
+   */
+  logTrackings: Record<string, boolean> = {};
 
-  noNewAgreementLog: Record<string, boolean> = {};
-  noClosedAgreementLog: Record<string, boolean> = {};
-  indexerIsNotHealthyLog = false;
+  /**
+   * Is checker function currently being executed?
+   */
+  isCheckingAgreementBalances = false;
+
+  lastProcessedBlock = 0n;
 
   constructor() {}
 
@@ -85,18 +77,19 @@ class Program {
   }
 
   /**
-   * Checks if the Indexer is healthy if the given error is an Axios error.
-   * Logs an error message only once if it is not healthy.
-   * Returns `true` if the error was an Axios error and the Indexer is unhealthy.
-   * Returns `false` if the error was not an Axios error or the Indexer is healthy.
+   * Checks if the Indexer is healthy, if the given error is an
+   * Axios error. Prints an error message only once no matter how
+   * many times it is called.
+   * @returns `true` if the Indexer is unhealthy and false if it is healthy
    */
   async checkIndexerHealthy(err: unknown) {
     const error = ensureError(err);
     if (isAxiosError(error)) {
-      const isHealthy = await this.indexer.isHealthy();
+      const isHealthy = await indexerClient.isHealthy();
 
-      if (!isHealthy && !this.indexerIsNotHealthyLog) {
-        this.indexerIsNotHealthyLog = true;
+      // Log the error message only once
+      if (!isHealthy && !this.logTrackings[LOG_TRACK_INDEXER_HEALTH]) {
+        this.logTrackings[LOG_TRACK_INDEXER_HEALTH] = true;
         logger.error("Indexer is not healthy, cannot fetch data from it");
       }
       return true;
@@ -105,19 +98,30 @@ class Program {
     return false;
   }
 
-  async loadDetailFiles() {
-    logger.info("Detail files are loading to the database");
-    const basePath = join(process.cwd(), "data/details");
-    const files = readdirSync(basePath, { recursive: true }).filter((file) =>
+  /**
+   * Syncs the detail files from the data/details directory to the database.
+   */
+  async syncDetailFiles() {
+    logger.info("Syncing detail files to the database");
+    const basePath = join(process.cwd(), "data", "details");
+    const allFiles = readdirSync(basePath, { recursive: true });
+    const files = allFiles.filter((file) => {
+      const filePath = join(basePath, file.toString());
+      const stat = statSync(filePath, { throwIfNoEntry: false });
+
       // Exclude sub-directories
-      statSync(join(basePath, file.toString()), {
-        throwIfNoEntry: false,
-      })?.isFile()
-    );
-    const contents = files.map((file) =>
-      readFileSync(join(basePath, file.toString())).toString("utf-8")
-    );
-    await DB.saveDetailFiles(contents);
+      return stat?.isFile();
+    });
+
+    // Read contents of the files
+    const contents = files.map((file) => {
+      const filePath = join(basePath, file.toString());
+      const content = readFileSync(filePath);
+      return content.toString("utf-8");
+    });
+
+    // Sync the database
+    await DB.syncDetailFiles(contents);
   }
 
   async init() {
@@ -125,7 +129,7 @@ class Program {
     this.initHealthcheck();
 
     // Load detail files into the database
-    await this.loadDetailFiles();
+    await this.syncDetailFiles();
 
     // Initialize providers
     for (const [tag, provider] of Object.entries(this.providers)) {
@@ -141,7 +145,7 @@ class Program {
 
       provider.logger.info(
         `Initialized; tag: ${colorWord(tag)}, owner address: ${colorHex(
-          provider.actorInfo.ownerAddr
+          provider.actor.ownerAddr
         )}, operates on Protocol: ${colorHex(provider.protocol.address)}`
       );
     }
@@ -239,18 +243,19 @@ class Program {
     addCleanupHandler(() => promise);
   }
 
-  async processAgreementCreated(
+  async createResource(
     agreement: Agreement,
     offer: Offer,
     ptAddress: Address,
-    provider: AbstractProvider
+    provider: AbstractProvider,
+    providerActor: { id: number; ownerAddr: Address }
   ) {
     try {
       const [offerDetailFile] = await DB.getDetailFiles([offer.detailsLink]);
 
       if (!offerDetailFile) {
         provider.logger.warning(
-          `Details file is not found for Offer ${agreement.offerId}@${ptAddress} (Provider ID: ${provider.actorInfo.id})`
+          `Details file is not found for Offer ${agreement.offerId} @ ${ptAddress} (Provider ID: ${provider.actor.id})`
         );
       }
 
@@ -258,7 +263,7 @@ class Program {
       const detailedOffer: DetailedOffer = {
         ...offer,
 
-        // TODO: Validate schema
+        // TODO: Validate offer details if it is a JSON file
         // If it is a JSON file, parse it. Otherwise return it as a string.
         details: tryParseJSON(offerDetailFile?.content, true),
       };
@@ -278,7 +283,7 @@ class Program {
         offerId: offer.id,
         ownerAddress: agreement.userAddr,
         ptAddressId: protocol.id,
-        providerId: provider.actorInfo.id,
+        providerId: providerActor.id,
         details: {
           ...details,
 
@@ -325,14 +330,14 @@ class Program {
         name: "",
         ptAddressId: pt.id,
         offerId: agreement.offerId,
-        providerId: provider.actorInfo.id,
+        providerId: providerActor.id,
         ownerAddress: agreement.userAddr,
         details: {},
       });
     }
   }
 
-  async processAgreementClosed(
+  async deleteResource(
     agreement: Agreement,
     offer: Offer,
     ptAddress: Address,
@@ -380,175 +385,245 @@ class Program {
     await DB.deleteResource(agreement.id, ptAddress);
   }
 
-  async checkNewAgreements(provider: AbstractProvider) {
-    try {
-      const lastProcessedNewAgreementDate = await DB.getConfig(
-        CONFIG_LAST_PROCESSED_NEW_AGREEMENT_DATE
-      );
-      const allAgreements = await this.indexer
+  /**
+   * Gets all the Agreements that are belong
+   * to the given Provider and its Virtual Providers.
+   */
+  async getAgreementsOfProvider(provider: AbstractProvider, status: Status) {
+    const getAgreementOptions: GetAgreementsOptions = {
+      protocolAddress: provider.protocol.address.toLowerCase() as Address,
+      autoPaginate: true,
+      status,
+    };
+
+    const providerAgreements = await indexerClient
+      .getAgreements({
+        // Use common options
+        ...getAgreementOptions,
+
+        // Only fetch the Agreements of the Provider
+        providerAddress: provider.actor.ownerAddr.toLowerCase() as Address,
+      })
+      .then((res) => res.data);
+
+    // Get Agreements for the Virtual Providers (if there is any in the Provider)
+    const vProviderAgreements: IndexerAgreement[] = [];
+
+    for (const vprov of provider.virtualProviders) {
+      const agreements = await indexerClient
         .getAgreements({
-          providerAddress:
-            provider.actorInfo.ownerAddr.toLowerCase() as Address,
-          protocolAddress: provider.protocol.address.toLowerCase() as Address,
-          startTs: lastProcessedNewAgreementDate,
-          status: Status.Active,
-          autoPaginate: true,
-          limit: 100,
+          // Use common options
+          ...getAgreementOptions,
+
+          // Only fetch the Agreements of the Virtual Provider
+          providerAddress: vprov.actor.ownerAddr.toLowerCase() as Address,
         })
         .then((res) => res.data);
 
-      this.indexerIsNotHealthyLog = false;
-
-      // Check if those Agreements are already in the database
-      const existingAgreements = await DB.getResources(
-        allAgreements.map((agreement) => agreement.id)
-      );
-
-      // Find non-existing Agreements
-      const nonExistingAgreements = allAgreements.filter(
-        (agreement) => !existingAgreements.find((a) => a.id == agreement.id)
-      );
-
-      if (nonExistingAgreements.length == 0) {
-        // If this log message is already logged, don't log it again
-        if (!this.noNewAgreementLog[provider.actorInfo.ownerAddr]) {
-          provider.logger.info(
-            `No new Agreements found for ${colorHex(
-              provider.actorInfo.ownerAddr
-            )}`
-          );
-          this.noNewAgreementLog[provider.actorInfo.ownerAddr] = true;
-        }
-        return;
-      }
-
-      provider.logger.info(
-        `${ansis.yellow.bold("Found")} ${
-          nonExistingAgreements.length
-        } new Agreements for ${colorHex(provider.actorInfo.ownerAddr)}`
-      );
-
-      for (const agreement of nonExistingAgreements) {
-        provider.logger.info(
-          `${ansis.green.bold("Creating")} Agreement ${colorNumber(
-            agreement.id
-          )} by ${colorHex(provider.actorInfo.ownerAddr)}`
-        );
-        const offer = await provider.protocol.getOffer(agreement.offerId);
-
-        await this.processAgreementCreated(
-          indexerAgreementToAgreement(agreement, offer.id),
-          offer,
-          provider.protocol.address,
-          provider
-        );
-
-        // Save the last processed new agreement date so
-        // in the next iteration we can continue from it.
-        await DB.setConfig(
-          CONFIG_LAST_PROCESSED_NEW_AGREEMENT_DATE,
-          agreement.startTs.toString()
-        );
-
-        this.noNewAgreementLog[provider.actorInfo.ownerAddr] = false;
-      }
-    } catch (err) {
-      const error = ensureError(err);
-      const indexerError = await this.checkIndexerHealthy(error);
-
-      if (!indexerError && !isTermination(error)) {
-        provider.logger.error(
-          `Error while fetching the Agreements: ${error.stack}`
-        );
-      }
+      // Store all the found Agreements into the array
+      vProviderAgreements.push(...agreements);
     }
+
+    // Change the flag because now we know that the Indexer is healthy
+    this.markIndexerAsHealthy();
+
+    // Return all the Agreements that are fetched
+    return [...providerAgreements, ...vProviderAgreements];
   }
 
-  async checkClosedAgreements(provider: AbstractProvider) {
-    try {
-      const lastProcessedClosedAgreementDate = await DB.getConfig(
-        CONFIG_LAST_PROCESSED_CLOSED_AGREEMENT_DATE
-      );
-      const allAgreements = await this.indexer
-        .getAgreements({
-          providerAddress:
-            provider.actorInfo.ownerAddr.toLowerCase() as Address,
-          protocolAddress: provider.protocol.address.toLowerCase() as Address,
-          startTs: lastProcessedClosedAgreementDate,
-          status: Status.NotActive,
-          autoPaginate: true,
-          limit: 100,
-        })
-        .then((res) => res.data);
+  async processAgreementCreationEvent(params: {
+    agreementId: number;
+    offerId: number;
+    userAddress: Address;
+    provider: AbstractProvider;
+  }) {
+    const resource = await DB.getResource(
+      params.agreementId,
+      params.userAddress,
+      params.provider.protocol.address
+    );
 
-      this.indexerIsNotHealthyLog = false;
-
-      // Get the existing Agreements from the database
-      const existingAgreements = await DB.getResources(
-        allAgreements.map((agreement) => agreement.id)
-      );
-
-      // Find non-closed ones
-      const nonClosedResources = existingAgreements.filter(
-        (resource) => resource.isActive
-      );
-
-      if (nonClosedResources.length == 0) {
-        // If this log message is already logged, don't log it again
-        if (!this.noClosedAgreementLog[provider.actorInfo.ownerAddr]) {
-          provider.logger.info(
-            `No Agreements found to be closed by ${colorHex(
-              provider.actorInfo.ownerAddr
-            )}`
-          );
-          this.noClosedAgreementLog[provider.actorInfo.ownerAddr] = true;
-        }
-        return;
-      }
-
-      provider.logger.info(
-        `${ansis.yellow.bold("Found")} ${
-          nonClosedResources.length
-        } Agreements to be closed by ${colorHex(provider.actorInfo.ownerAddr)}`
-      );
-
-      for (const resource of nonClosedResources) {
-        provider.logger.info(
-          `${ansis.red.bold("Closing")} Agreement ${colorNumber(
-            resource.id
-          )} by ${colorHex(provider.actorInfo.ownerAddr)}`
-        );
-        const agreement = allAgreements.find(
-          (agreement) => agreement.id == resource.id
-        )!;
-        const offer = await provider.protocol.getOffer(agreement.offerId);
-
-        await this.processAgreementClosed(
-          indexerAgreementToAgreement(agreement, offer.id),
-          offer,
-          provider.protocol.address,
-          provider
-        );
-
-        // Save the last processed closed agreement date so
-        // in the next iteration we can continue from it.
-        await DB.setConfig(
-          CONFIG_LAST_PROCESSED_CLOSED_AGREEMENT_DATE,
-          agreement.startTs
-        );
-
-        this.noClosedAgreementLog[provider.actorInfo.ownerAddr] = false;
-      }
-    } catch (err) {
-      const error = ensureError(err);
-      const indexerError = await this.checkIndexerHealthy(error);
-
-      if (!indexerError && !isTermination(error)) {
-        provider.logger.error(
-          `Error while fetching the Agreements: ${error.stack}`
-        );
-      }
+    // If the resource is presented in the database, that means we've
+    // already processed this event so we can skip it
+    if (resource) {
+      return;
     }
+
+    const agreement = await indexerClient
+      .getAgreements({
+        id: params.agreementId,
+        protocolAddress:
+          params.provider.protocol.address.toLowerCase() as Address,
+        status: Status.Active,
+      })
+      .then((res) => res.data[0]);
+
+    // If there is no active Agreement for the given ID and Protocol, that means
+    // the Agreement is already closed before we process the event.
+    if (!agreement) {
+      return;
+    }
+
+    params.provider.logger.info(
+      `${ansis.green.bold("Creating")} Resource of Agreement ${colorNumber(
+        agreement.id
+      )} by Provider ${colorHex(agreement.providerAddress)}`
+    );
+
+    // TODO: Because of the AbstractProvider uses blockchain data types (e.g "Agreement", "Offer") in its "create" method, we need to fetch the data from the blockchain to keep the backward compatibility
+    const offer = await params.provider.protocol.getOffer(agreement.offerId);
+
+    // This object points to the Provider that is responsible from the Agreement.
+    // It might be the Provider itself or one of the Virtual Providers that are
+    // registered in it.
+    const providerActor: { id: number; ownerAddr: Address } = {
+      // Fill out with dummy values
+      id: -1,
+      ownerAddr: "0x",
+    };
+
+    // If the Agreement is coming from the Provider itself, then use its Actor info
+    if (
+      agreement.providerAddress.toLowerCase() ===
+      params.provider.actor.ownerAddr.toLowerCase()
+    ) {
+      providerActor.id = params.provider.actor.id;
+      providerActor.ownerAddr = params.provider.actor.ownerAddr;
+    } else {
+      // Otherwise search from its Virtual Providers
+      const vprovActor = params.provider.virtualProviders.findByAddress(
+        agreement.providerAddress
+      );
+
+      // If the Virtual Provider is not available (e.g vPROV hasn't
+      // been registered in the Gateway Provider), throw an error
+      // since there is nothing that we can do.
+      if (!vprovActor) {
+        throw new Error(
+          `The Agreement ${agreement.id} @ ${colorHex(
+            params.provider.protocol.address
+          )} is being processed by Provider ${colorHex(
+            params.provider.actor.ownerAddr
+          )} (ID: ${params.provider.actor.id}, tag: ${
+            params.provider.tag
+          }) but the Agreement is not belong to that Provider or any of its Virtual Providers`
+        );
+      }
+
+      // vPROV is found so use its Actor info
+      providerActor.id = vprovActor.actor.id;
+      providerActor.ownerAddr = vprovActor.actor.ownerAddr;
+    }
+
+    await this.createResource(
+      indexerAgreementToAgreement(agreement, offer.id),
+      offer,
+      params.provider.protocol.address,
+      params.provider,
+      providerActor
+    );
+  }
+
+  async processAgreementCloseEvent(params: {
+    agreementId: number;
+    provider: AbstractProvider;
+  }) {
+    const agreement = await indexerClient
+      .getAgreements({
+        id: params.agreementId,
+        protocolAddress:
+          params.provider.protocol.address.toLowerCase() as Address,
+        status: Status.NotActive,
+      })
+      .then((res) => res.data[0]);
+
+    // Small or zero possibility since Agreement close event only emitted after
+    // the creation one and in that case the Agreement must be indexed by
+    // the Indexer, but check it for sake of the type safety.
+    if (!agreement) {
+      throw new Error(
+        `Agreement ${params.agreementId} @ ${params.provider.protocol.address} is not found`
+      );
+    }
+
+    const resource = await DB.getResource(
+      params.agreementId,
+      agreement.userAddress,
+      params.provider.protocol.address
+    );
+
+    // If the resource is not found in the database that means the Agreement
+    // is deleted before we create the resource so we can simply continue.
+    if (!resource) {
+      return;
+    }
+
+    // If the resource is marked as inactive, that means we've
+    // already processed this event so we can skip it
+    if (resource.isActive === false) {
+      return;
+    }
+
+    // TODO: Because of the AbstractProvider uses blockchain data types (e.g "Agreement", "Offer") we need to fetch the data from the blockchain to keep the backward compatibility
+    const offer = await params.provider.protocol.getOffer(agreement.offerId);
+
+    await this.deleteResource(
+      indexerAgreementToAgreement(agreement, offer.id),
+      offer,
+      params.provider.protocol.address,
+      params.provider
+    );
+  }
+
+  async getEventsOfProtocol(
+    protocolAddress: Address,
+    eventName: "AgreementCreated" | "AgreementClosed"
+  ) {
+    const events = await indexerClient
+      .getEvents({
+        autoPaginate: true,
+        fromBlock: this.lastProcessedBlock + 1n, // Skip the last processed block by adding 1
+        toBlock: this.lastProcessedBlock + config.BLOCK_PROCESS_RANGE,
+        limit: 1000,
+        processed: true,
+        eventName, // NOTE: Exact SC event name
+        contractAddress: protocolAddress.toLowerCase() as Address,
+      })
+      .then((res) => res.data);
+
+    // TODO: Once the `/events` endpoint from the Indexer supports ordering, remove the following;
+    // Sort ascending by block number
+    events.sort((a, b) => {
+      const aNumber = BigInt(a.blockNumber);
+      const bNumber = BigInt(b.blockNumber);
+
+      if (aNumber > bNumber) {
+        return 1;
+      } else if (aNumber < bNumber) {
+        return -1;
+      }
+
+      return 0;
+    });
+
+    return events;
+  }
+
+  /**
+   * Marks the Indexer error log track as false. Check the example situation below:
+   * If Indexer becomes unhealthy at some point, the daemon logs an error message.
+   * But it logs that error message only once to save space from the logs
+   * (we don't want to see the same error messages for 1000~ lines)
+   * The daemon keep track of whether it already logged that error message
+   * with `logTrackings` variable. This function marks value that tracks the error
+   * message as false so the error message can be logged again.
+   */
+  async markIndexerAsHealthy() {
+    if (this.logTrackings[LOG_TRACK_INDEXER_HEALTH]) {
+      logger.info(`Indexer is healthy`);
+    }
+
+    this.logTrackings[LOG_TRACK_INDEXER_HEALTH] = false;
   }
 
   async main() {
@@ -556,14 +631,93 @@ class Program {
 
     logger.info("Daemon is started");
 
+    const errorHandler = async (err: unknown, provider: AbstractProvider) => {
+      const error = ensureError(err);
+      const indexerError = await this.checkIndexerHealthy(error);
+
+      if (!indexerError && !isTermination(error)) {
+        provider.logger.error(`Error: ${error.stack}`);
+      }
+    };
+
+    this.lastProcessedBlock = BigInt(
+      (await DB.getConfig(CONFIG_LAST_PROCESSED_BLOCK)) || 0n
+    );
     while (!abortController.signal.aborted) {
       for (const [, provider] of Object.entries(this.providers)) {
+        // Get all the Agreement related events
+        const agreementEnterEvents = await this.getEventsOfProtocol(
+          provider.protocol.address.toLowerCase() as Address,
+          "AgreementCreated"
+        )
+          .then((e) => {
+            this.markIndexerAsHealthy();
+            return e;
+          })
+          .catch((err) => {
+            errorHandler(err, provider);
+            return [];
+          });
+
+        const agreementCloseEvents = await this.getEventsOfProtocol(
+          provider.protocol.address.toLowerCase() as Address,
+          "AgreementClosed"
+        )
+          .then((e) => {
+            this.markIndexerAsHealthy();
+            return e;
+          })
+          .catch((err) => {
+            errorHandler(err, provider);
+            return [];
+          });
+
+        let latestProcessedBlock = 0n;
         try {
-          await this.checkNewAgreements(provider);
-          await this.checkClosedAgreements(provider);
+          for (const event of agreementEnterEvents) {
+            await this.processAgreementCreationEvent({
+              agreementId: event.args.id,
+              offerId: event.args.offerId,
+              userAddress: event.args.userAddr,
+              provider,
+            })
+              .then(() => this.markIndexerAsHealthy())
+              .catch((err) => errorHandler(err, provider));
+
+            // Keep track of the highest processed block
+            const eventBlock = BigInt(event.blockNumber);
+            if (eventBlock > latestProcessedBlock) {
+              latestProcessedBlock = eventBlock;
+            }
+          }
+          for (const event of agreementCloseEvents) {
+            await this.processAgreementCloseEvent({
+              agreementId: event.args.id,
+              provider,
+            })
+              .then(() => this.markIndexerAsHealthy())
+              .catch((err) => errorHandler(err, provider));
+
+            // Keep track of the highest processed block
+            const eventBlock = BigInt(event.blockNumber);
+            if (eventBlock > latestProcessedBlock) {
+              latestProcessedBlock = eventBlock;
+            }
+          }
+
+          // Update the last processed block since we've already processed everything
+          if (latestProcessedBlock > this.lastProcessedBlock) {
+            this.lastProcessedBlock = latestProcessedBlock;
+            await DB.setConfig(
+              CONFIG_LAST_PROCESSED_BLOCK,
+              this.lastProcessedBlock.toString()
+            );
+          }
         } catch (err) {
-          const error = ensureError(err);
-          provider.logger.error(`Error: ${error.stack}`);
+          // If something went wrong just log the error and start from the
+          // last event batch. It is fine to reprocess events because there
+          // are checks in the process functions to prevent re-processing
+          errorHandler(err, provider);
         }
       }
 
@@ -580,24 +734,24 @@ class Program {
   }
 
   async checkAgreementBalances() {
+    // Check if there is another execution of this function
+    if (this.isCheckingAgreementBalances) {
+      return;
+    }
+    this.isCheckingAgreementBalances = true;
+
     // Check all Agreements of the Providers
     for (const [, provider] of Object.entries(this.providers)) {
       try {
-        const activeAgreements: IndexerAgreement[] = await this.indexer
-          .getAgreements({
-            providerAddress:
-              provider.actorInfo.ownerAddr.toLowerCase() as Address,
-            protocolAddress: provider.protocol.address.toLowerCase() as Address,
-            status: Status.Active,
-            limit: 100,
-            autoPaginate: true,
-          })
-          .then((res) => res.data);
-
-        this.indexerIsNotHealthyLog = false;
+        // Gets all the active Agreements of the Provider
+        // including its Virtual Providers
+        const agreements = await this.getAgreementsOfProvider(
+          provider,
+          Status.Active
+        );
 
         // Filter the Agreements that don't have enough balance
-        const agreementsToBeClosed = activeAgreements.filter(
+        const agreementsToBeClosed = agreements.filter(
           (agreement) => BigInt(agreement.balance) <= 0n
         );
 
@@ -607,16 +761,15 @@ class Program {
               agreement.protocolAddress
             )} ran out of balance, closing...`
           );
-          try {
-            await provider.protocol.closeAgreement(agreement.id);
-          } catch (err) {
+
+          await provider.protocol.closeAgreement(agreement.id).catch((err) => {
             const error = ensureError(err);
             provider.logger.error(
               `Error while closing Agreement ${colorNumber(
                 agreement.id
               )}@${colorHex(agreement.protocolAddress)}: ${error.stack}`
             );
-          }
+          });
         }
       } catch (err) {
         const error = ensureError(err);
@@ -624,13 +777,16 @@ class Program {
 
         if (!indexerError && !isTermination(error)) {
           provider.logger.error(
-            `Error while checking balances of the Agreements@${colorHex(
-              provider.protocol.address
-            )}: ${error.stack}`
+            `Error while checking balances of the Agreements of Provider ${colorHex(
+              provider.actor.ownerAddr
+            )} @ ${colorHex(provider.protocol.address)}: ${error.stack}`
           );
         }
       }
     }
+
+    // Mark the function execution as finished
+    this.isCheckingAgreementBalances = false;
   }
 }
 
@@ -638,8 +794,8 @@ const program = new Program();
 program
   .main()
   .then(() => {
-  logger.warning("See ya...");
-  process.exit(process.exitCode || 0);
+    logger.warning("See ya...");
+    process.exit(process.exitCode || 0);
   })
   .catch((err) => {
     const error = ensureError(err);
@@ -648,7 +804,7 @@ program
       logger.error(`Stack: ${error.stack}`);
     }
     process.exit(1);
-});
+  });
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface BigInt {

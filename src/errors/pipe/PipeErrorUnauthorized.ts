@@ -1,9 +1,9 @@
 import { PipeError, PipeResponseCodes } from "@forest-protocols/sdk";
 
-export class PipeErrorNotFound extends PipeError {
-  constructor(entity: any) {
-    super(PipeResponseCodes.NOT_FOUND, {
-      message: `${entity} not found`,
+export class PipeErrorUnauthorized extends PipeError {
+  constructor() {
+    super(PipeResponseCodes.NOT_AUTHORIZED, {
+      message: `Unauthorized`,
     });
     this.name = this.constructor.name;
     Error.captureStackTrace(this, this.constructor);

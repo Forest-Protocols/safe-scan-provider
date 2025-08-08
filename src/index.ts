@@ -437,6 +437,14 @@ class Program {
     userAddress: Address;
     provider: AbstractProvider;
   }) {
+    params.provider.logger.debug(
+      `Processing Agreement creation event for Agreement ${colorNumber(
+        params.agreementId
+      )} with Offer ${colorNumber(params.offerId)} @ ${colorHex(
+        params.provider.protocol.address
+      )} User Address: ${colorHex(params.userAddress)}`
+    );
+
     const resource = await DB.getResource(
       params.agreementId,
       params.userAddress,
@@ -528,6 +536,12 @@ class Program {
     agreementId: number;
     provider: AbstractProvider;
   }) {
+    params.provider.logger.debug(
+      `Processing Agreement close event for Agreement ${colorNumber(
+        params.agreementId
+      )} @ ${colorHex(params.provider.protocol.address)}`
+    );
+
     const agreement = await indexerClient
       .getAgreements({
         id: params.agreementId,
@@ -579,6 +593,14 @@ class Program {
     protocolAddress: Address,
     eventName: "AgreementCreated" | "AgreementClosed"
   ) {
+    logger.debug(
+      `Getting ${eventName} events from ${colorHex(
+        protocolAddress
+      )} between ${colorNumber(this.lastProcessedBlock + 1n)} and ${colorNumber(
+        this.lastProcessedBlock + config.BLOCK_PROCESS_RANGE
+      )}`
+    );
+
     const events = await indexerClient
       .getEvents({
         autoPaginate: true,
@@ -644,6 +666,8 @@ class Program {
       (await DB.getConfig(CONFIG_LAST_PROCESSED_BLOCK)) || 0n
     );
     while (!abortController.signal.aborted) {
+      let highestProcessedBlock = 0n;
+
       for (const [, provider] of Object.entries(this.providers)) {
         // Get all the Agreement related events
         const agreementEnterEvents = await this.getEventsOfProtocol(
@@ -672,53 +696,46 @@ class Program {
             return [];
           });
 
-        let latestProcessedBlock = 0n;
-        try {
-          for (const event of agreementEnterEvents) {
-            await this.processAgreementCreationEvent({
-              agreementId: event.args.id,
-              offerId: event.args.offerId,
-              userAddress: event.args.userAddr,
-              provider,
-            })
-              .then(() => this.markIndexerAsHealthy())
-              .catch((err) => errorHandler(err, provider));
+        for (const event of agreementEnterEvents) {
+          await this.processAgreementCreationEvent({
+            agreementId: event.args.id,
+            offerId: event.args.offerId,
+            userAddress: event.args.userAddr,
+            provider,
+          })
+            .then(() => this.markIndexerAsHealthy())
+            .catch((err) => errorHandler(err, provider));
 
-            // Keep track of the highest processed block
-            const eventBlock = BigInt(event.blockNumber);
-            if (eventBlock > latestProcessedBlock) {
-              latestProcessedBlock = eventBlock;
-            }
+          // Keep track of the highest processed block
+          const eventBlock = BigInt(event.blockNumber);
+          if (eventBlock > highestProcessedBlock) {
+            highestProcessedBlock = eventBlock;
           }
-          for (const event of agreementCloseEvents) {
-            await this.processAgreementCloseEvent({
-              agreementId: event.args.id,
-              provider,
-            })
-              .then(() => this.markIndexerAsHealthy())
-              .catch((err) => errorHandler(err, provider));
-
-            // Keep track of the highest processed block
-            const eventBlock = BigInt(event.blockNumber);
-            if (eventBlock > latestProcessedBlock) {
-              latestProcessedBlock = eventBlock;
-            }
-          }
-
-          // Update the last processed block since we've already processed everything
-          if (latestProcessedBlock > this.lastProcessedBlock) {
-            this.lastProcessedBlock = latestProcessedBlock;
-            await DB.setConfig(
-              CONFIG_LAST_PROCESSED_BLOCK,
-              this.lastProcessedBlock.toString()
-            );
-          }
-        } catch (err) {
-          // If something went wrong just log the error and start from the
-          // last event batch. It is fine to reprocess events because there
-          // are checks in the process functions to prevent re-processing
-          errorHandler(err, provider);
         }
+        for (const event of agreementCloseEvents) {
+          await this.processAgreementCloseEvent({
+            agreementId: event.args.id,
+            provider,
+          })
+            .then(() => this.markIndexerAsHealthy())
+            .catch((err) => errorHandler(err, provider));
+
+          // Keep track of the highest processed block
+          const eventBlock = BigInt(event.blockNumber);
+          if (eventBlock > highestProcessedBlock) {
+            highestProcessedBlock = eventBlock;
+          }
+        }
+      }
+
+      // Update the highest processed block since we've
+      // already processed all of them for all the Providers
+      if (highestProcessedBlock > this.lastProcessedBlock) {
+        this.lastProcessedBlock = highestProcessedBlock;
+        await DB.setConfig(
+          CONFIG_LAST_PROCESSED_BLOCK,
+          this.lastProcessedBlock.toString()
+        );
       }
 
       await sleep(

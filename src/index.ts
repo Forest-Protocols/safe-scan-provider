@@ -589,6 +589,21 @@ class Program {
     );
   }
 
+  /**
+   * Gets the block number of the last indexed event
+   */
+  async getLatestEventBlock() {
+    const [event] = await indexerClient
+      .getEvents({
+        limit: 1,
+        processed: true,
+      })
+      .then((res) => res.data);
+    this.markIndexerAsHealthy();
+
+    return BigInt(event.blockNumber);
+  }
+
   async getEventsOfProtocol(
     protocolAddress: Address,
     eventName: "AgreementCreated" | "AgreementClosed"
@@ -612,6 +627,7 @@ class Program {
         contractAddress: protocolAddress.toLowerCase() as Address,
       })
       .then((res) => res.data);
+    this.markIndexerAsHealthy();
 
     // TODO: Once the `/events` endpoint from the Indexer supports ordering, remove the following;
     // Sort ascending by block number
@@ -667,7 +683,7 @@ class Program {
         (await rpcClient.getBlockNumber())
     );
     while (!abortController.signal.aborted) {
-      let highestProcessedBlock = 0n;
+      const lastIndexedBlock = await this.getLatestEventBlock();
 
       for (const [, provider] of Object.entries(this.providers)) {
         // Get all the Agreement related events
@@ -706,12 +722,6 @@ class Program {
           })
             .then(() => this.markIndexerAsHealthy())
             .catch((err) => errorHandler(err, provider));
-
-          // Keep track of the highest processed block
-          const eventBlock = BigInt(event.blockNumber);
-          if (eventBlock > highestProcessedBlock) {
-            highestProcessedBlock = eventBlock;
-          }
         }
         for (const event of agreementCloseEvents) {
           await this.processAgreementCloseEvent({
@@ -720,30 +730,27 @@ class Program {
           })
             .then(() => this.markIndexerAsHealthy())
             .catch((err) => errorHandler(err, provider));
-
-          // Keep track of the highest processed block
-          const eventBlock = BigInt(event.blockNumber);
-          if (eventBlock > highestProcessedBlock) {
-            highestProcessedBlock = eventBlock;
-          }
         }
       }
 
-      // If there is no event found in the block range, move to the next range
-      // because now we know that in that block range there is nothing that we can process
-      if (highestProcessedBlock < this.lastProcessedBlock) {
-        highestProcessedBlock =
-          this.lastProcessedBlock + config.BLOCK_PROCESS_RANGE;
+      // If there are still blocks ahead of the last block that we have processed,
+      // continue to the next block range, otherwise stop at the highest block.
+      if (
+        this.lastProcessedBlock + config.BLOCK_PROCESS_RANGE <
+        lastIndexedBlock
+      ) {
+        this.lastProcessedBlock += config.BLOCK_PROCESS_RANGE;
+      } else {
+        this.lastProcessedBlock = lastIndexedBlock;
       }
 
-      // Update the highest processed block since we've
-      // already processed all of them for all the Providers
-      this.lastProcessedBlock = highestProcessedBlock;
+      // Save it to the database for the next start of the daemon to continue where we left.
       await DB.setConfig(
         CONFIG_LAST_PROCESSED_BLOCK,
         this.lastProcessedBlock.toString()
       );
 
+      // No need to hurry, wait a little bit
       await sleep(
         config.AGREEMENT_CHECK_INTERVAL,
         abortController.signal

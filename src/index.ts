@@ -4,6 +4,7 @@ import {
   DeploymentStatus,
   GetAgreementsOptions,
   IndexerAgreement,
+  IndexerEvent,
   Offer,
   sleep,
   Status,
@@ -431,23 +432,54 @@ class Program {
     return [...providerAgreements, ...vProviderAgreements];
   }
 
+  /**
+   * Finds the Provider Actor information of the given Agreement from the given Provider
+   */
+  findProviderActorByAgreement(
+    agreement: IndexerAgreement,
+    provider: AbstractProvider
+  ) {
+    // If the Agreement is coming from the Provider itself, then use its Actor info
+    if (
+      agreement.providerAddress.toLowerCase() ===
+      provider.actor.ownerAddr.toLowerCase()
+    ) {
+      return {
+        id: provider.actor.id,
+        ownerAddr: provider.actor.ownerAddr,
+      };
+    } else {
+      // Otherwise search from its Virtual Providers
+      const vprov = provider.virtualProviders.findByAddress(
+        agreement.providerAddress
+      );
+
+      // vPROV is found so use its Actor info
+      if (vprov) {
+        return {
+          id: vprov.actor.id,
+          ownerAddr: vprov.actor.ownerAddr,
+        };
+      }
+    }
+  }
+
   async processAgreementCreationEvent(params: {
-    agreementId: number;
-    offerId: number;
-    userAddress: Address;
+    agreement: IndexerAgreement;
     provider: AbstractProvider;
+    providerActor: { id: number; ownerAddr: Address };
   }) {
     params.provider.logger.debug(
       `Processing Agreement creation event for Agreement ${colorNumber(
-        params.agreementId
-      )} with Offer ${colorNumber(params.offerId)} @ ${colorHex(
+        params.agreement.id
+      )} with Offer ${colorNumber(params.agreement.offerId)} @ ${colorHex(
         params.provider.protocol.address
-      )} User Address: ${colorHex(params.userAddress)}`
+      )} User Address: ${colorHex(params.agreement.userAddress)}`
     );
 
     const resource = await DB.getResource(
-      params.agreementId,
-      params.userAddress,
+      params.agreement.id,
+      params.agreement.userAddress,
       params.provider.protocol.address
     );
 
@@ -457,117 +489,45 @@ class Program {
       return;
     }
 
-    const agreement = await indexerClient
-      .getAgreements({
-        id: params.agreementId,
-        protocolAddress:
-          params.provider.protocol.address.toLowerCase() as Address,
-        status: Status.Active,
-      })
-      .then((res) => res.data[0]);
-
-    // If there is no active Agreement for the given ID and Protocol, that means
-    // the Agreement is already closed before we process the event.
-    if (!agreement) {
-      return;
-    }
-
     params.provider.logger.info(
       `${ansis.green.bold("Creating")} Resource of Agreement ${colorNumber(
-        agreement.id
-      )} by Provider ${colorHex(agreement.providerAddress)}`
+        params.agreement.id
+      )} by Provider ${colorHex(params.agreement.providerAddress)}`
     );
 
     // TODO: Because of the AbstractProvider uses blockchain data types (e.g "Agreement", "Offer") in its "create" method, we need to fetch the data from the blockchain to keep the backward compatibility
-    const offer = await params.provider.protocol.getOffer(agreement.offerId);
-
-    // This object points to the Provider that is responsible from the Agreement.
-    // It might be the Provider itself or one of the Virtual Providers that are
-    // registered in it.
-    const providerActor: { id: number; ownerAddr: Address } = {
-      // Fill out with dummy values
-      id: -1,
-      ownerAddr: "0x",
-    };
-
-    // If the Agreement is coming from the Provider itself, then use its Actor info
-    if (
-      agreement.providerAddress.toLowerCase() ===
-      params.provider.actor.ownerAddr.toLowerCase()
-    ) {
-      providerActor.id = params.provider.actor.id;
-      providerActor.ownerAddr = params.provider.actor.ownerAddr;
-    } else {
-      // Otherwise search from its Virtual Providers
-      const vprovActor = params.provider.virtualProviders.findByAddress(
-        agreement.providerAddress
-      );
-
-      // If the Virtual Provider is not available (e.g vPROV hasn't
-      // been registered in the Gateway Provider), throw an error
-      // since there is nothing that we can do.
-      if (!vprovActor) {
-        throw new Error(
-          `The Agreement ${agreement.id} @ ${colorHex(
-            params.provider.protocol.address
-          )} is being processed by Provider ${colorHex(
-            params.provider.actor.ownerAddr
-          )} (ID: ${params.provider.actor.id}, tag: ${
-            params.provider.tag
-          }) but the Agreement is not belong to that Provider or any of its Virtual Providers`
-        );
-      }
-
-      // vPROV is found so use its Actor info
-      providerActor.id = vprovActor.actor.id;
-      providerActor.ownerAddr = vprovActor.actor.ownerAddr;
-    }
+    const offer = await params.provider.protocol.getOffer(
+      params.agreement.offerId
+    );
 
     await this.createResource(
-      indexerAgreementToAgreement(agreement, offer.id),
+      indexerAgreementToAgreement(params.agreement, offer.id),
       offer,
       params.provider.protocol.address,
       params.provider,
-      providerActor
+      params.providerActor
     );
   }
 
   async processAgreementCloseEvent(params: {
-    agreementId: number;
+    agreement: IndexerAgreement;
     provider: AbstractProvider;
   }) {
     params.provider.logger.debug(
       `Processing Agreement close event for Agreement ${colorNumber(
-        params.agreementId
+        params.agreement.id
       )} @ ${colorHex(params.provider.protocol.address)}`
     );
 
-    const agreement = await indexerClient
-      .getAgreements({
-        id: params.agreementId,
-        protocolAddress:
-          params.provider.protocol.address.toLowerCase() as Address,
-        status: Status.NotActive,
-      })
-      .then((res) => res.data[0]);
-
-    // Small or zero possibility since Agreement close event only emitted after
-    // the creation one and in that case the Agreement must be indexed by
-    // the Indexer, but check it for sake of the type safety.
-    if (!agreement) {
-      throw new Error(
-        `Agreement ${params.agreementId} @ ${params.provider.protocol.address} is not found`
-      );
-    }
-
     const resource = await DB.getResource(
-      params.agreementId,
-      agreement.userAddress,
+      params.agreement.id,
+      params.agreement.userAddress,
       params.provider.protocol.address
     );
 
-    // If the resource is not found in the database that means the Agreement
-    // is deleted before we create the resource so we can simply continue.
+    // Small or zero possibility, since we are creating the Resource when we get
+    // the creation event and creation events always happens before closing event
+    // but check it for the sake of type safety
     if (!resource) {
       return;
     }
@@ -579,10 +539,12 @@ class Program {
     }
 
     // TODO: Because of the AbstractProvider uses blockchain data types (e.g "Agreement", "Offer") we need to fetch the data from the blockchain to keep the backward compatibility
-    const offer = await params.provider.protocol.getOffer(agreement.offerId);
+    const offer = await params.provider.protocol.getOffer(
+      params.agreement.offerId
+    );
 
     await this.deleteResource(
-      indexerAgreementToAgreement(agreement, offer.id),
+      indexerAgreementToAgreement(params.agreement, offer.id),
       offer,
       params.provider.protocol.address,
       params.provider
@@ -608,14 +570,6 @@ class Program {
     protocolAddress: Address,
     eventName: "AgreementCreated" | "AgreementClosed"
   ) {
-    logger.debug(
-      `Getting ${eventName} events from ${colorHex(
-        protocolAddress
-      )} between ${colorNumber(this.lastProcessedBlock + 1n)} and ${colorNumber(
-        this.lastProcessedBlock + config.BLOCK_PROCESS_RANGE
-      )}`
-    );
-
     const events = await indexerClient
       .getEvents({
         autoPaginate: true,
@@ -669,12 +623,12 @@ class Program {
 
     logger.info("Daemon is started");
 
-    const errorHandler = async (err: unknown, provider: AbstractProvider) => {
+    const errorHandler = async (err: unknown, provider?: AbstractProvider) => {
       const error = ensureError(err);
       const indexerError = await this.checkIndexerHealthy(error);
 
       if (!indexerError && !isTermination(error)) {
-        provider.logger.error(`Error: ${error.stack}`);
+        (provider?.logger || logger).error(`Error: ${error.stack}`);
       }
     };
 
@@ -685,70 +639,114 @@ class Program {
     while (!abortController.signal.aborted) {
       const lastIndexedBlock = await this.getLatestEventBlock();
 
+      // Collect the events for all the configured Protocols
+      const events: IndexerEvent[] = [];
       for (const [, provider] of Object.entries(this.providers)) {
-        // Get all the Agreement related events
-        const agreementEnterEvents = await this.getEventsOfProtocol(
-          provider.protocol.address.toLowerCase() as Address,
-          "AgreementCreated"
-        )
-          .then((e) => {
-            this.markIndexerAsHealthy();
-            return e;
-          })
-          .catch((err) => {
-            errorHandler(err, provider);
-            return [];
-          });
+        events.push(
+          ...(await this.getEventsOfProtocol(
+            provider.protocol.address.toLowerCase() as Address,
+            "AgreementCreated"
+          )
+            .then((e) => {
+              this.markIndexerAsHealthy();
+              return e;
+            })
+            .catch((err) => {
+              errorHandler(err, provider);
+              return [];
+            }))
+        );
 
-        const agreementCloseEvents = await this.getEventsOfProtocol(
-          provider.protocol.address.toLowerCase() as Address,
-          "AgreementClosed"
-        )
-          .then((e) => {
-            this.markIndexerAsHealthy();
-            return e;
-          })
-          .catch((err) => {
-            errorHandler(err, provider);
-            return [];
-          });
-
-        for (const event of agreementEnterEvents) {
-          await this.processAgreementCreationEvent({
-            agreementId: event.args.id,
-            offerId: event.args.offerId,
-            userAddress: event.args.userAddr,
-            provider,
-          })
-            .then(() => this.markIndexerAsHealthy())
-            .catch((err) => errorHandler(err, provider));
-        }
-        for (const event of agreementCloseEvents) {
-          await this.processAgreementCloseEvent({
-            agreementId: event.args.id,
-            provider,
-          })
-            .then(() => this.markIndexerAsHealthy())
-            .catch((err) => errorHandler(err, provider));
-        }
+        events.push(
+          ...(await this.getEventsOfProtocol(
+            provider.protocol.address.toLowerCase() as Address,
+            "AgreementClosed"
+          )
+            .then((e) => {
+              this.markIndexerAsHealthy();
+              return e;
+            })
+            .catch((err) => {
+              errorHandler(err, provider);
+              return [];
+            }))
+        );
       }
 
-      // If there are still blocks ahead of the last block that we have processed,
-      // continue to the next block range, otherwise stop at the highest block.
-      if (
-        this.lastProcessedBlock + config.BLOCK_PROCESS_RANGE <
-        lastIndexedBlock
-      ) {
-        this.lastProcessedBlock += config.BLOCK_PROCESS_RANGE;
-      } else {
-        this.lastProcessedBlock = lastIndexedBlock;
-      }
+      // Process the collected events
+      try {
+        for (const [, provider] of Object.entries(this.providers)) {
+          for (const event of events) {
+            const [agreement] = await indexerClient
+              .getAgreements({
+                id: event.args.id,
+                protocolAddress:
+                  provider.protocol.address.toLowerCase() as Address,
+              })
+              .then((res) => {
+                this.markIndexerAsHealthy();
+                return res.data;
+              });
 
-      // Save it to the database for the next start of the daemon to continue where we left.
-      await DB.setConfig(
-        CONFIG_LAST_PROCESSED_BLOCK,
-        this.lastProcessedBlock.toString()
-      );
+            // If the Indexer call is failed, the Agreement
+            if (!agreement) {
+              continue;
+            }
+
+            // Find the responsible Actor (Provider itself or one of its Virtual Providers)
+            const providerActor = this.findProviderActorByAgreement(
+              agreement,
+              provider
+            );
+
+            // Process the event if the responsible Provider found
+            if (
+              providerActor?.ownerAddr.toLowerCase() ===
+              agreement.providerAddress.toLowerCase()
+            ) {
+              if (event.eventName === "AgreementCreated") {
+                await this.processAgreementCreationEvent({
+                  agreement,
+                  providerActor,
+                  provider,
+                })
+                  .then(() => this.markIndexerAsHealthy())
+                  .catch((err) => errorHandler(err, provider));
+              } else {
+                await this.processAgreementCloseEvent({
+                  agreement,
+                  provider,
+                })
+                  .then(() => this.markIndexerAsHealthy())
+                  .catch((err) => errorHandler(err, provider));
+              }
+            }
+          }
+        }
+
+        // If there are still blocks ahead of the last block that we have processed,
+        // continue to the next block range, otherwise last indexed block is the last
+        // block that we have processed so accept that point as the origin for the next iteration.
+        if (
+          this.lastProcessedBlock + config.BLOCK_PROCESS_RANGE <
+          lastIndexedBlock
+        ) {
+          this.lastProcessedBlock += config.BLOCK_PROCESS_RANGE;
+        } else {
+          this.lastProcessedBlock = lastIndexedBlock;
+        }
+
+        // Save it to the database for the next start of the daemon to continue where we left.
+        await DB.setConfig(
+          CONFIG_LAST_PROCESSED_BLOCK,
+          this.lastProcessedBlock.toString()
+        );
+      } catch (err) {
+        // The workflow only branches here if the `getAgreements` call is failed.
+        // In that case we would want to retry it, so don't update the `lastProcessedBlock`
+        // and process the same block range in the next iteration
+        errorHandler(err);
+      }
 
       // No need to hurry, wait a little bit
       await sleep(

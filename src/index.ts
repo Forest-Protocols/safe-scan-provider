@@ -641,10 +641,14 @@ class Program {
 
       // Collect the events for all the configured Protocols
       const events: IndexerEvent[] = [];
-      for (const [, provider] of Object.entries(this.providers)) {
+      const protocolAddresses = Object.values(this.providers).map(
+        (p) => p.protocol.address.toLowerCase() as Address
+      );
+
+      for (const protocolAddress of protocolAddresses) {
         events.push(
           ...(await this.getEventsOfProtocol(
-            provider.protocol.address.toLowerCase() as Address,
+            protocolAddress,
             "AgreementCreated"
           )
             .then((e) => {
@@ -652,22 +656,19 @@ class Program {
               return e;
             })
             .catch((err) => {
-              errorHandler(err, provider);
+              errorHandler(err);
               return [];
             }))
         );
 
         events.push(
-          ...(await this.getEventsOfProtocol(
-            provider.protocol.address.toLowerCase() as Address,
-            "AgreementClosed"
-          )
+          ...(await this.getEventsOfProtocol(protocolAddress, "AgreementClosed")
             .then((e) => {
               this.markIndexerAsHealthy();
               return e;
             })
             .catch((err) => {
-              errorHandler(err, provider);
+              errorHandler(err);
               return [];
             }))
         );

@@ -35,6 +35,7 @@ import {
   PipeError,
   generateCID,
   Offer,
+  Status,
 } from "@forest-protocols/sdk";
 import { yellow } from "ansis";
 import { readFileSync, statSync, writeFileSync } from "fs";
@@ -809,6 +810,11 @@ export abstract class AbstractProvider<
     const offerCIDs = offers.map((o) => o.detailsLink);
     const detailFiles = await DB.getDetailFiles(offerCIDs);
     for (const offer of offers) {
+      // Only force having detail files of the active Offers
+      if (offer.status !== Status.Active) {
+        continue;
+      }
+
       const detailsFile = detailFiles.find(
         (df) => df.cid === offer.detailsLink
       );

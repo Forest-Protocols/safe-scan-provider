@@ -641,8 +641,10 @@ class Program {
 
       // Collect the events for all the configured Protocols
       const events: IndexerEvent[] = [];
-      const protocolAddresses = Object.values(this.providers).map(
-        (p) => p.protocol.address.toLowerCase() as Address
+      const protocolAddresses = new Set(
+        Object.values(this.providers).map(
+          (p) => p.protocol.address.toLowerCase() as Address
+        )
       );
 
       for (const protocolAddress of protocolAddresses) {

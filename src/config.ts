@@ -1,17 +1,17 @@
 import { z } from "zod";
 import { red } from "ansis";
 import {
-  addressSchema,
+  AddressSchema,
   ForestRegistryAddress,
   getContractAddressByChain,
-  PrivateKeySchema,
   setGlobalRateLimit,
   setGlobalRateLimitTimeWindow,
 } from "@forest-protocols/sdk";
 import { nonEmptyStringSchema } from "./validation/schemas";
 import { Address } from "viem";
-import dotenv from "@dotenvx/dotenvx";
 import { parseTime } from "./utils/parse-time";
+import { ProviderConfig, ProviderConfigSchema } from "./validation/provider";
+import dotenv from "@dotenvx/dotenvx";
 
 function parseEnv() {
   const environmentSchema = z.object({
@@ -28,7 +28,7 @@ function parseEnv() {
       .string()
       .default("1s")
       .transform((value, ctx) => parseTime(value, ctx)),
-    REGISTRY_ADDRESS: addressSchema.optional(),
+    REGISTRY_ADDRESS: AddressSchema.optional(),
     INDEXER_ENDPOINT: z.string().url().optional(),
     AGREEMENT_CHECK_INTERVAL: z
       .string()
@@ -38,6 +38,7 @@ function parseEnv() {
       .string()
       .default("5m")
       .transform((value, ctx) => parseTime(value, ctx)),
+    BLOCK_PROCESS_RANGE: z.coerce.bigint().default(1000n),
   });
   const parsedEnv = environmentSchema.safeParse(process.env, {});
 
@@ -59,28 +60,53 @@ function parseEnv() {
 }
 
 function parseProviderConfig() {
-  const providerSchema = z.object({
-    providerWalletPrivateKey: PrivateKeySchema,
-    billingWalletPrivateKey: PrivateKeySchema,
-    operatorWalletPrivateKey: PrivateKeySchema,
-    operatorPipePort: z.coerce.number().positive(),
-    protocolAddress: addressSchema.optional(),
-  });
+  const providers: Record<
+    string,
+    ProviderConfig & {
+      // Include the following fields for backward compatibility
 
-  const providers: {
-    [providerTag: string]: z.infer<typeof providerSchema>;
-  } = {};
+      /**
+       * @deprecated Use "BILLING_PRIVATE_KEY" instead
+       */
+      billingWalletPrivateKey: Address;
 
-  const pkRegex =
-    /^(?<keyType>((PROVIDER|BILLING|OPERATOR)_PRIVATE_KEY)|OPERATOR_PIPE_PORT|PROTOCOL_ADDRESS)_(?<providerTag>[\w]+)$/;
+      /**
+       * @deprecated Use "OPERATOR_PRIVATE_KEY" instead
+       */
+      operatorWalletPrivateKey: Address;
+
+      /**
+       * @deprecated Use "PROVIDER_PRIVATE_KEY" instead
+       */
+      providerWalletPrivateKey: Address;
+
+      /**
+       * @deprecated Use "OPERATOR_PIPE_PORT" instead
+       */
+      operatorPipePort: number;
+
+      /**
+       * @deprecated Use "PROTOCOL_ADDRESS" instead
+       */
+      protocolAddress?: Address;
+    }
+  > = {};
+  const regex =
+    /^(?<keyType>((PROVIDER|BILLING|OPERATOR)_PRIVATE_KEY)|OPERATOR_PIPE_PORT|PROTOCOL_ADDRESS|GATEWAY)_(?<providerTag>[\w]+)$/;
   for (const [name, value] of Object.entries(process.env)) {
-    const match = name.match(pkRegex);
+    const match = name.match(regex);
     if (match) {
       const keyType = match.groups?.keyType as string;
       const providerTag = match.groups?.providerTag as string;
 
       if (!providers[providerTag]) {
         providers[providerTag] = {
+          BILLING_PRIVATE_KEY: "0x",
+          OPERATOR_PRIVATE_KEY: "0x",
+          PROVIDER_PRIVATE_KEY: "0x",
+          OPERATOR_PIPE_PORT: 0,
+          GATEWAY: false,
+
           billingWalletPrivateKey: "0x",
           operatorWalletPrivateKey: "0x",
           providerWalletPrivateKey: "0x",
@@ -90,48 +116,69 @@ function parseProviderConfig() {
 
       switch (keyType) {
         case "PROVIDER_PRIVATE_KEY":
-          providers[providerTag].providerWalletPrivateKey = value as Address;
+          providers[providerTag].PROVIDER_PRIVATE_KEY = value as Address;
           break;
         case "OPERATOR_PRIVATE_KEY":
-          providers[providerTag].operatorWalletPrivateKey = value as Address;
+          providers[providerTag].OPERATOR_PRIVATE_KEY = value as Address;
           break;
         case "BILLING_PRIVATE_KEY":
-          providers[providerTag].billingWalletPrivateKey = value as Address;
+          providers[providerTag].BILLING_PRIVATE_KEY = value as Address;
           break;
         case "OPERATOR_PIPE_PORT":
-          providers[providerTag].operatorPipePort = parseInt(value as string);
+          providers[providerTag].OPERATOR_PIPE_PORT = parseInt(value as string);
           break;
         case "PROTOCOL_ADDRESS":
-          providers[providerTag].protocolAddress = value as Address;
+          providers[providerTag].PROTOCOL_ADDRESS = value as Address;
+          break;
+        case "GATEWAY":
+          providers[providerTag].GATEWAY = value?.toLowerCase() === "true";
           break;
       }
     }
   }
 
-  for (const [providerTag, keys] of Object.entries(providers)) {
-    const validation = providerSchema.safeParse(keys);
+  for (const [tag, configuration] of Object.entries(providers)) {
+    const validation = ProviderConfigSchema.safeParse(configuration);
 
     if (validation.error) {
       const error = validation.error.errors[0];
       console.error(
         red(
-          `Invalid Provider configuration for tag "${providerTag}": ${error.path}: ${error.message}`
+          `Invalid Provider configuration for tag "${tag}": ${error.path}: ${error.message}`
         )
       );
       process.exit(1);
     }
+
+    providers[tag] = {
+      ...configuration,
+
+      // Fill out the old fields for backward compatibility
+      operatorPipePort: configuration.OPERATOR_PIPE_PORT,
+      providerWalletPrivateKey: configuration.PROVIDER_PRIVATE_KEY,
+      operatorWalletPrivateKey: configuration.OPERATOR_PRIVATE_KEY,
+      billingWalletPrivateKey: configuration.BILLING_PRIVATE_KEY,
+      protocolAddress: configuration.PROTOCOL_ADDRESS,
+    };
   }
   return providers;
 }
 
 // Load the env file if there is one.
 // Ignore the error if the file is not found.
-dotenv.config({ ignore: ["MISSING_ENV_FILE"] });
+dotenv.config({ ignore: ["MISSING_ENV_FILE"], quiet: true });
 
 const env = parseEnv();
 
+const providerConfigurations = parseProviderConfig();
+
 export const config = {
   ...env,
-  providers: parseProviderConfig(),
   registryAddress: getContractAddressByChain(env.CHAIN, ForestRegistryAddress),
+
+  /**
+   * @deprecated Use "providerConfigurations" instead
+   */
+  providers: providerConfigurations,
+  providerConfigurations,
 };

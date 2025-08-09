@@ -1,48 +1,59 @@
 import {
   HTTPPipe,
+  MaybePromise,
   PipeError,
   PipeMethod,
   PipeMethodType,
   PipeRequest,
   PipeResponseCodes,
   PipeRouteHandler,
+  PipeRouteHandlerResponse,
   validateBodyOrParams,
   XMTPv3Pipe,
 } from "@forest-protocols/sdk";
 import { AbstractProvider } from "./abstract/AbstractProvider";
-import { ProviderPipeRouteHandler } from "./types";
 import { logger } from "./logger";
 import { colorHex, colorWord } from "./color";
 import { z } from "zod";
+import { Address } from "viem";
+import { PipeErrorNotFound } from "./errors/pipe/PipeErrorNotFound";
 
 /**
- * Operator pipes in this daemon
+ * Pipe instances for each Operator that is configured
  */
-export const pipes: {
-  [operatorAddr: string]: {
-    // NOTE: XMTP Pipe will be removed in the future
+export const pipes: Record<
+  Address,
+  {
+    // TODO: XMTP Pipe will be removed in the future
     xmtp: XMTPv3Pipe;
     http: HTTPPipe;
-  };
-} = {};
+  }
+> = {};
 
 /**
- * Routes defined by providers
- * TODO: We don't need this route handling per Provider ID. We can simply change the path to include the provider ID such as `/providers/1/<path>`.
- * Ah, why I haven't thought of this before?! - mdk
+ * Provider specific routes.
+ * TODO: We don't need this route mapping. We can simply change the path and include the Provider ID e.g. `/providers/1/<path>`. Ah, why I haven't thought of this before?! - mdk
  */
-export const providerRoutes: {
-  [providerId: string]: {
-    [path: string]: {
-      [method: string]: ProviderPipeRouteHandler;
-    };
-  };
-} = {};
+const providerRoutes: Record<string, ProviderPipeRouteHandler> = {};
 
 /**
- * Setups a Pipe route in the Operator's Pipe of the given Provider.
- * The requests that are sent to this route must include the
- * `providerId` field either in the body or params.
+ * Setups a Pipe route that is specialized for the given Provider. Only the requests
+ * that include `providerId` field either in `body` or `params` will be processed by
+ * the given handler.
+ *
+ * Route handlers are unique by their paths. Simply there is a relation
+ * between Path + Method <-> Route handler. As an example let's think a situation like below:
+ *
+ * We have two different Providers which use the same Operator address and we have
+ * a route configured as "GET /special-function" in the Protocol level. In that case
+ * when we receive a request to this endpoint, how can we know which Provider should process this?
+ * They are using the same Operator address but the implementation might be different. Since there
+ * will be one Pipe (because two of the Providers are using the same Operator) the route
+ * handler can be set only once. If it set twice, the second one will override the first one.
+ *
+ * So as a solution, the routes are defined with this function must include the
+ * Provider ID and we store a mapping between Path + Method + Provider Id <-> Route handler
+ * so we can know which Provider will process the request.
  */
 export function pipeProviderRoute(
   provider: AbstractProvider,
@@ -50,66 +61,63 @@ export function pipeProviderRoute(
   path: `/${string}`,
   handler: ProviderPipeRouteHandler
 ) {
-  if (!providerRoutes[provider.actorInfo.id]) {
-    providerRoutes[provider.actorInfo.id] = {};
+  providerRoutes[`${method}-${provider.actor.id}-${path}`] = handler;
+
+  // If the Provider has Virtual Providers, also add mapping
+  // for all of them. So all the requests that are being
+  // sent to the Virtual Providers will also be processed
+  // by the same handler function.
+  for (const vprovId of provider.virtualProviders) {
+    providerRoutes[`${method}-${vprovId.actor.id}-${path}`] = handler;
   }
 
-  if (!providerRoutes[provider.actorInfo.id][path]) {
-    providerRoutes[provider.actorInfo.id][path] = {};
-  }
+  pipeOperatorRoute(provider.actor.operatorAddr, method, path, async (req) => {
+    let providerId: number | undefined;
 
-  providerRoutes[provider.actorInfo.id][path][method] = handler;
+    // Lookup body and params for `providerId`
+    const schema = z.object(
+      { providerId: z.number().optional() },
+      { message: "Empty object" }
+    );
 
-  pipeOperatorRoute(
-    provider.actorInfo.operatorAddr,
-    method,
-    path,
-    async (req) => {
-      let providerId: number | undefined;
+    if (req.body !== undefined) {
+      const body = validateBodyOrParams(req.body, schema);
+      providerId = body.providerId;
+    }
 
-      // Lookup body and params for `providerId`
-      const schema = z.object({
-        providerId: z.number().optional(),
-      });
+    // If the ID is not found in the body, then lookup to the params
+    if (providerId === undefined && req.params !== undefined) {
+      const params = validateBodyOrParams(req.params, schema);
+      providerId = params.providerId;
+    }
 
-      if (req.body !== undefined) {
-        const body = validateBodyOrParams(req.body, schema);
-        providerId = body.providerId;
-      } else if (req.params !== undefined) {
-        const params = validateBodyOrParams(req.params, schema);
-        providerId = params.providerId;
-      }
-
-      if (providerId === undefined) {
-        throw new PipeError(PipeResponseCodes.BAD_REQUEST, {
-          message: `Missing "providerId"`,
-        });
-      }
-
-      // Search the corresponding handler for the given provider, path and method
-      const providerRouteHandler =
-        providerRoutes[providerId!]?.[path]?.[method];
-
-      // Throw error if there is no handler defined in this pipe for the given provider
-      if (!providerRouteHandler) {
-        throw new PipeError(PipeResponseCodes.NOT_FOUND, {
-          message: `${method} ${req.path} not found`,
-        });
-      }
-
-      return await providerRouteHandler({
-        ...req,
-        providerId: providerId!,
+    if (providerId === undefined) {
+      throw new PipeError(PipeResponseCodes.BAD_REQUEST, {
+        message: `"providerId" must be included either in "body" or "params"`,
       });
     }
-  );
+
+    // Search the corresponding handler for the given Provider ID, path and method
+    const providerRouteHandler =
+      providerRoutes[`${method}-${providerId}-${path}`];
+
+    // Throw error if there is no handler defined in this pipe for the given provider
+    if (!providerRouteHandler) {
+      throw new PipeErrorNotFound(`${method} ${req.path}`);
+    }
+
+    return await providerRouteHandler({
+      ...req,
+      providerId: providerId!,
+    });
+  });
 }
 
 /**
  * Setups a Pipe route in the given Operator's Pipe.
  */
 export function pipeOperatorRoute(
-  operatorAddress: string,
+  operatorAddress: Address,
   method: PipeMethodType,
   path: string,
   handler: PipeRouteHandler,
@@ -155,3 +163,13 @@ export function pipeOperatorRoute(
     pipes[operatorAddress].http.route(method, path, handlerWrapper);
   }
 }
+
+/**
+ * The route handler type that includes `providerId` as an
+ * additional field in the request. That additional field
+ * is filled up when `pipeProviderRoute` function is used
+ * to define route handler.
+ */
+export type ProviderPipeRouteHandler = (
+  req: PipeRequest & { providerId: number }
+) => MaybePromise<PipeRouteHandlerResponse>;

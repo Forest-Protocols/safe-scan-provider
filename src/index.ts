@@ -486,6 +486,9 @@ class Program {
     // If the resource is presented in the database, that means we've
     // already processed this event so we can skip it
     if (resource) {
+      params.provider.logger.debug(
+        `Resource for Agreement ${params.agreement.id} is already created`
+      );
       return;
     }
 
@@ -529,16 +532,22 @@ class Program {
     // the creation event and creation events always happens before closing event
     // but check it for the sake of type safety
     if (!resource) {
+      params.provider.logger.debug(
+        `Resource of Agreement ${params.agreement.id} is not even created`
+      );
       return;
     }
 
     // If the resource is marked as inactive, that means we've
     // already processed this event so we can skip it
     if (resource.isActive === false) {
+      params.provider.logger.debug(
+        `Resource of Agreement ${params.agreement.id} is already marked as deleted`
+      );
       return;
     }
 
-    // TODO: Because of the AbstractProvider uses blockchain data types (e.g "Agreement", "Offer") we need to fetch the data from the blockchain to keep the backward compatibility
+    // TODO: Because of the AbstractProvider uses blockchain data types (e.g "Agreement", "Offer") in its "delete" method, we need to fetch the data from the blockchain to keep the backward compatibility.
     const offer = await params.provider.protocol.getOffer(
       params.agreement.offerId
     );
@@ -573,7 +582,7 @@ class Program {
     const events = await indexerClient
       .getEvents({
         autoPaginate: true,
-        fromBlock: this.lastProcessedBlock + 1n, // Skip the last processed block by adding 1
+        fromBlock: this.lastProcessedBlock,
         toBlock: this.lastProcessedBlock + config.BLOCK_PROCESS_RANGE,
         limit: 1000,
         processed: true,
@@ -637,47 +646,36 @@ class Program {
         (await rpcClient.getBlockNumber())
     );
     while (!abortController.signal.aborted) {
-      const lastIndexedBlock = await this.getLatestEventBlock();
-
-      // Collect the events for all the configured Protocols
-      const events: IndexerEvent[] = [];
-      const protocolAddresses = new Set(
-        Object.values(this.providers).map(
-          (p) => p.protocol.address.toLowerCase() as Address
-        )
-      );
-
-      for (const protocolAddress of protocolAddresses) {
-        events.push(
-          ...(await this.getEventsOfProtocol(
-            protocolAddress,
-            "AgreementCreated"
-          )
-            .then((e) => {
-              this.markIndexerAsHealthy();
-              return e;
-            })
-            .catch((err) => {
-              errorHandler(err);
-              return [];
-            }))
-        );
-
-        events.push(
-          ...(await this.getEventsOfProtocol(protocolAddress, "AgreementClosed")
-            .then((e) => {
-              this.markIndexerAsHealthy();
-              return e;
-            })
-            .catch((err) => {
-              errorHandler(err);
-              return [];
-            }))
-        );
-      }
-
-      // Process the collected events
       try {
+        const lastIndexedBlock = await this.getLatestEventBlock();
+
+        // Collect the events for all the configured Protocols
+        const events: IndexerEvent[] = [];
+        const protocolAddresses = new Set(
+          Object.values(this.providers).map(
+            (p) => p.protocol.address.toLowerCase() as Address
+          )
+        );
+
+        for (const protocolAddress of protocolAddresses) {
+          // First process creation events so put them in the beginning of the list...
+          events.push(
+            ...(await this.getEventsOfProtocol(
+              protocolAddress,
+              "AgreementCreated"
+            ))
+          );
+
+          // ...then closing events
+          events.push(
+            ...(await this.getEventsOfProtocol(
+              protocolAddress,
+              "AgreementClosed"
+            ))
+          );
+        }
+
+        // Process the collected events
         for (const [, provider] of Object.entries(this.providers)) {
           for (const event of events) {
             const [agreement] = await indexerClient
@@ -691,7 +689,8 @@ class Program {
                 return res.data;
               });
 
-            // If the Indexer call is failed, the Agreement
+            // If the Agreement is not found, that means the event is not related to the Provider
+            // Each Provider might be using different Protocols and in that case the Agreement won't be found.
             if (!agreement) {
               continue;
             }
@@ -724,6 +723,8 @@ class Program {
                   .catch((err) => errorHandler(err, provider));
               }
             }
+            // If the providerActor is not found, that means even though this Provider
+            // is in the same Protocol as the Agreement, it is not related to that Provider.
           }
         }
 
@@ -745,9 +746,9 @@ class Program {
           this.lastProcessedBlock.toString()
         );
       } catch (err) {
-        // The workflow only branches here if the `getAgreements` call is failed.
-        // In that case we would want to retry it, so don't update the `lastProcessedBlock`
-        // and process the same block range in the next iteration
+        // If something goes wrong, we would want to retry processing the
+        // events for the same block range, so just log the error and go to the next iteration
+        // without updating the `lastProcessedBlock`
         errorHandler(err);
       }
 

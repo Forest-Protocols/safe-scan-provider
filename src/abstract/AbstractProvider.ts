@@ -1042,7 +1042,7 @@ export type VirtualProvider = {
 
 export type VirtualProviderConfigurationInformation = {
   example: string;
-  format: string | string[];
+  format?: string | string[];
   description?: string;
   required?: boolean;
   default?: string;

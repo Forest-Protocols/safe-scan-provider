@@ -151,7 +151,7 @@ export abstract class AbstractProvider<
   async getVirtualProviderConfiguration(
     offerId: number,
     protocolAddress: Address
-  ): Promise<z.infer<this["virtualProviderConfigurationSchema"]>> {
+  ): Promise<z.infer<this["virtualProviderConfigurationSchema"]> | undefined> {
     return await DB.getVirtualProviderConfiguration(offerId, protocolAddress);
   }
 
@@ -287,12 +287,12 @@ export abstract class AbstractProvider<
   /**
    * Initializes XMTP and HTTP Pipes for the Operator.
    */
-  private async initPipes(providerConfig: ProviderConfig) {
+  private async initPipes() {
     // Setup the Pipes if they are not initialized yet for this Operator
     if (!pipes[this.actor.operatorAddr]) {
       pipes[this.actor.operatorAddr] = {
         // TODO: XMTP is deprecated. It will be removed in the future.
-        xmtp: new XMTPv3Pipe(providerConfig.OPERATOR_PRIVATE_KEY, {
+        xmtp: new XMTPv3Pipe(this.configuration.OPERATOR_PRIVATE_KEY, {
           dbPath: join(
             process.cwd(),
             "data",
@@ -303,8 +303,8 @@ export abstract class AbstractProvider<
           // we can use in the next client initialization
           encryptionKey: this.actor.operatorAddr,
         }),
-        http: new HTTPPipe(providerConfig.OPERATOR_PRIVATE_KEY, {
-          port: providerConfig.OPERATOR_PIPE_PORT,
+        http: new HTTPPipe(this.configuration.OPERATOR_PRIVATE_KEY, {
+          port: this.configuration.OPERATOR_PIPE_PORT,
         }),
       };
 
@@ -363,11 +363,11 @@ export abstract class AbstractProvider<
       this.logger.info(
         `Initialized HTTP Pipe for Operator ${yellow.bold(
           this.actor.operatorAddr
-        )} on 0.0.0.0:${providerConfig.OPERATOR_PIPE_PORT}`
+        )} on 0.0.0.0:${this.configuration.OPERATOR_PIPE_PORT}`
       );
 
       // Initialize the routes
-      await this.initOperatorPipeRoutes(providerConfig.GATEWAY);
+      await this.initOperatorPipeRoutes(this.configuration.GATEWAY);
     }
   }
 
@@ -385,6 +385,10 @@ export abstract class AbstractProvider<
 
     // Setup routes for the Gateway Provider
     if (isGatewayProvider) {
+      this.operatorRoute(PipeMethods.GET, "/gateway-provider", () =>
+        this.routeHandlerGetInformation()
+      );
+
       this.operatorRoute(PipeMethods.POST, "/virtual-providers", (req) =>
         this.routeHandlerRegisterVirtualProvider(req)
       );
@@ -407,6 +411,18 @@ export abstract class AbstractProvider<
         (req) => this.routeHandlerVirtualProviderGetOfferConfiguration(req)
       );
     }
+  }
+
+  private async routeHandlerGetInformation() {
+    return {
+      code: PipeResponseCodes.OK,
+      body: {
+        details: this.details,
+        ownerAddress: this.ownerAddress,
+        operatorAddress: this.operatorAccount.address,
+        isGateway: this.configuration.GATEWAY,
+      },
+    };
   }
 
   private async routeHandlerVirtualProviderGetOfferConfiguration(
@@ -515,7 +531,7 @@ export abstract class AbstractProvider<
         code: PipeResponseCodes.INTERNAL_SERVER_ERROR,
         body: {
           message:
-            "Available configurations are not defined on the Gateway Provider",
+            "Available configurations are not defined in the Gateway Provider",
         },
       };
     }
@@ -590,13 +606,6 @@ export abstract class AbstractProvider<
       z.object({ detailsFile: z.string() }, { message: "Body is missing" })
     );
 
-    const existingProvider = await DB.getProvider(req.requester as Address);
-    if (existingProvider) {
-      throw new PipeError(PipeResponseCodes.BAD_REQUEST, {
-        message: "Virtual Provider is already registered",
-      });
-    }
-
     const parsedDetailsFile = tryParseJSON(params.detailsFile);
     if (!parsedDetailsFile) {
       throw new PipeError(PipeResponseCodes.BAD_REQUEST, {
@@ -663,6 +672,9 @@ export abstract class AbstractProvider<
       this.actor.id
     );
 
+    // Reload the vPROVs from database to memory
+    await this.reloadVirtualProviders();
+
     return {
       code: PipeResponseCodes.OK,
       body: {
@@ -704,6 +716,64 @@ export abstract class AbstractProvider<
     });
   }
 
+  private async reloadVirtualProviders() {
+    const newVProvs = new VirtualProvidersArray();
+    const vProviders = await DB.getVirtualProvidersByGatewayProviderId(
+      this.actor.id
+    );
+
+    // Check existence and validate the each Virtual Provider
+    for (const vprov of vProviders) {
+      const identifier = `Virtual Provider ${colorHex(
+        vprov.ownerAddress
+      )} (ID: ${vprov.id})`;
+      const vprovActor = await this.registry.getActor(vprov.ownerAddress);
+
+      if (!vprovActor) {
+        this.logger.warning(
+          `${identifier} is not found in the Network. Be sure that it is registered in the Network. The Virtual Provider won't be used.`
+        );
+        continue;
+      }
+
+      // Check the existence of the details file of the vPROV
+      const [detailsFile] = await DB.getDetailFiles([vprovActor.detailsLink]);
+      if (!detailsFile) {
+        this.logger.warning(
+          `Details file of ${identifier} is not found. Check the data/details directory to ensure that the details file is presented. The Virtual Provider won't be used.`
+        );
+        continue;
+      }
+
+      try {
+        await this.checkOfferDetailFiles(vprovActor.id, identifier);
+
+        const details = this.validateProviderDetails(
+          detailsFile.content,
+          identifier
+        );
+
+        newVProvs.push({
+          actor: vprovActor,
+          details,
+        });
+
+        this.logger.info(
+          `Virtual Provider ${colorHex(vprovActor.ownerAddr)} (ID: ${
+            vprovActor.id
+          }) initialized successfully`
+        );
+      } catch (err) {
+        const error = ensureError(err);
+        this.logger.warning(error.message);
+        this.logger.warning(`${identifier} won't be used.`);
+      }
+    }
+
+    // Only update the vPROV when the function reaches out to the end
+    this._virtualProviders = newVProvs;
+  }
+
   /**
    * Setups everything that is needed by the Provider and checks
    * its and its Virtual Providers existence in the Network, validates detail files etc.
@@ -738,62 +808,12 @@ export abstract class AbstractProvider<
     await this.setupProtocolClient(this.configuration.PROTOCOL_ADDRESS);
 
     // Check if all the detail files of all the Offers of this Provider in the target Protocol are presented
-    await this.checkOfferDetailFiles(this.actor.id);
+    await this.checkOfferDetailFiles(this.actor.id, this.logIdentifier());
 
     // If this is a Gateway Provider, load the registered vPROVs from
     // the database and check their existence in the Network
     if (this.configuration.GATEWAY) {
-      const vProviders = await DB.getVirtualProvidersByGatewayProviderId(
-        this.actor.id
-      );
-
-      // Check existence and validate the each Virtual Provider
-      for (const vprov of vProviders) {
-        const identifier = `Virtual Provider ${colorHex(
-          vprov.ownerAddress
-        )} (ID: ${vprov.id})`;
-        const vprovActor = await this.registry.getActor(vprov.ownerAddress);
-
-        if (!vprovActor) {
-          this.logger.warning(
-            `${identifier} is not found in the Network. Be sure that it is registered in the Network. The Virtual Provider won't be used.`
-          );
-          continue;
-        }
-
-        // Check the existence of the details file of the vPROV
-        const [detailsFile] = await DB.getDetailFiles([vprovActor.detailsLink]);
-        if (!detailsFile) {
-          this.logger.warning(
-            `Details file of ${identifier} is not found. Check the data/details directory to ensure that the details file is presented. The Virtual Provider won't be used.`
-          );
-          continue;
-        }
-
-        await this.checkOfferDetailFiles(vprovActor.id);
-
-        try {
-          const details = this.validateProviderDetails(
-            detailsFile.content,
-            identifier
-          );
-
-          this._virtualProviders.push({
-            actor: vprovActor,
-            details,
-          });
-
-          this.logger.info(
-            `Virtual Provider ${colorHex(vprovActor.ownerAddr)} (ID: ${
-              vprovActor.id
-            }) initialized successfully`
-          );
-        } catch (err) {
-          const error = ensureError(err);
-          this.logger.warning(error.message);
-          this.logger.warning(`${identifier} won't be used.`);
-        }
-      }
+      await this.reloadVirtualProviders();
     }
 
     // TODO: Check for the Offer detail files
@@ -802,10 +822,10 @@ export abstract class AbstractProvider<
     await DB.saveProvider(this.actor.id, this.actor.ownerAddr);
 
     // Initialize the Pipes for this Operator address if it is not initialized yet.
-    await this.initPipes(this.configuration);
+    await this.initPipes();
   }
 
-  private async checkOfferDetailFiles(actorId: number) {
+  private async checkOfferDetailFiles(actorId: number, identifier: string) {
     const offers = await this.protocol.getAllProviderOffers(actorId);
     const offerCIDs = offers.map((o) => o.detailsLink);
     const detailFiles = await DB.getDetailFiles(offerCIDs);
@@ -820,9 +840,7 @@ export abstract class AbstractProvider<
       );
       if (!detailsFile) {
         throw new Error(
-          `Details file of Offer ${offer.id} @ ${
-            this.protocol.address
-          } of ${this.logIdentifier()} is not found. Please ensure that you've placed the details into "data/details/[filename].json"`
+          `Details file of Offer ${offer.id} @ ${this.protocol.address} of ${identifier} is not found. Please ensure that you've placed the details into "data/details/[filename].json"`
         );
       }
     }
@@ -895,7 +913,10 @@ export abstract class AbstractProvider<
     return str;
   }
 
-  public get availableVirtualProviderConfigurations(): Record<string, any> {
+  public get availableVirtualProviderConfigurations(): Record<
+    string,
+    VirtualProviderConfigurationInformation
+  > {
     throw new Error(`This method must be implemented by the Gateway Provider`);
   }
 
@@ -1017,4 +1038,12 @@ class VirtualProvidersArray extends Array<VirtualProvider> {
 export type VirtualProvider = {
   actor: Provider;
   details: ProviderDetails;
+};
+
+export type VirtualProviderConfigurationInformation = {
+  example: string;
+  format?: string | string[];
+  description?: string;
+  required?: boolean;
+  default?: string;
 };

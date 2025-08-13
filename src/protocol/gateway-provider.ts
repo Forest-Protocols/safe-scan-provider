@@ -5,6 +5,7 @@ import {
 } from "./base-provider";
 import { DetailedOffer, Resource } from "@/types";
 import { z } from "zod";
+import { VirtualProviderConfigurationInformation } from "@/abstract/AbstractProvider";
 
 /**
  * Gateway Provider (gPROV) is a Provider type that acts as a gateway for its
@@ -18,10 +19,23 @@ export class GatewayProviderImplementation extends BaseExampleServiceProvider {
    * are available and their meanings. So feel free to structure that object as you wish!
    * As long as it is meaningful and can be understood by the vPROVs, it is fine.
    */
-  get availableVirtualProviderConfigurations() {
+  get availableVirtualProviderConfigurations(): Record<
+    string,
+    VirtualProviderConfigurationInformation
+  > {
     return {
-      size: "<number><G | M>",
-      region: ["eu", "as", "us"],
+      size: {
+        example: "10g or 512m",
+        format: "<number>[g|m]",
+        description: "Disk size of the Resource",
+        required: true,
+      },
+      region: {
+        example: "eu",
+        format: ["eu", "as", "us"],
+        description: "Region that the Resource will be provisioned in",
+        default: "eu",
+      },
     };
   }
 
@@ -30,6 +44,8 @@ export class GatewayProviderImplementation extends BaseExampleServiceProvider {
    */
   get virtualProviderConfigurationSchema() {
     return z.object({
+      region: z.enum(["eu", "as", "us"]).default("eu"),
+
       // `size` field has its own format so we are parsing it with `.transform` method.
       size: z.string().transform((value, ctx) => {
         const multiplier = value[value.length - 1].toLowerCase();

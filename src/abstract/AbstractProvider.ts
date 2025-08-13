@@ -151,7 +151,7 @@ export abstract class AbstractProvider<
   async getVirtualProviderConfiguration(
     offerId: number,
     protocolAddress: Address
-  ): Promise<z.infer<this["virtualProviderConfigurationSchema"]>> {
+  ): Promise<z.infer<this["virtualProviderConfigurationSchema"]> | undefined> {
     return await DB.getVirtualProviderConfiguration(offerId, protocolAddress);
   }
 

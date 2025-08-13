@@ -717,8 +717,7 @@ export abstract class AbstractProvider<
   }
 
   private async reloadVirtualProviders() {
-    this._virtualProviders = new VirtualProvidersArray();
-
+    const newVProvs = new VirtualProvidersArray();
     const vProviders = await DB.getVirtualProvidersByGatewayProviderId(
       this.actor.id
     );
@@ -746,15 +745,15 @@ export abstract class AbstractProvider<
         continue;
       }
 
-      await this.checkOfferDetailFiles(vprovActor.id);
-
       try {
+        await this.checkOfferDetailFiles(vprovActor.id, identifier);
+
         const details = this.validateProviderDetails(
           detailsFile.content,
           identifier
         );
 
-        this._virtualProviders.push({
+        newVProvs.push({
           actor: vprovActor,
           details,
         });
@@ -770,6 +769,9 @@ export abstract class AbstractProvider<
         this.logger.warning(`${identifier} won't be used.`);
       }
     }
+
+    // Only update the vPROV when the function reaches out to the end
+    this._virtualProviders = newVProvs;
   }
 
   /**
@@ -806,7 +808,7 @@ export abstract class AbstractProvider<
     await this.setupProtocolClient(this.configuration.PROTOCOL_ADDRESS);
 
     // Check if all the detail files of all the Offers of this Provider in the target Protocol are presented
-    await this.checkOfferDetailFiles(this.actor.id);
+    await this.checkOfferDetailFiles(this.actor.id, this.logIdentifier());
 
     // If this is a Gateway Provider, load the registered vPROVs from
     // the database and check their existence in the Network
@@ -823,7 +825,7 @@ export abstract class AbstractProvider<
     await this.initPipes();
   }
 
-  private async checkOfferDetailFiles(actorId: number) {
+  private async checkOfferDetailFiles(actorId: number, identifier: string) {
     const offers = await this.protocol.getAllProviderOffers(actorId);
     const offerCIDs = offers.map((o) => o.detailsLink);
     const detailFiles = await DB.getDetailFiles(offerCIDs);
@@ -838,9 +840,7 @@ export abstract class AbstractProvider<
       );
       if (!detailsFile) {
         throw new Error(
-          `Details file of Offer ${offer.id} @ ${
-            this.protocol.address
-          } of ${this.logIdentifier()} is not found. Please ensure that you've placed the details into "data/details/[filename].json"`
+          `Details file of Offer ${offer.id} @ ${this.protocol.address} of ${identifier} is not found. Please ensure that you've placed the details into "data/details/[filename].json"`
         );
       }
     }

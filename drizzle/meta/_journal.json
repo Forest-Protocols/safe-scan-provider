@@ -43,6 +43,13 @@
       "when": 1754658340754,
       "tag": "0005_curious_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1755059095944,
+      "tag": "0006_workable_starhawk",
+      "breakpoints": true
     }
   ]
 }

@@ -168,12 +168,17 @@ export type DbDetailFileInsert = typeof detailFilesTable.$inferInsert;
 export const virtualProviderOfferConfigurations = pgTable(
   "virtual_provider_offer_configurations",
   {
-    id: integer("id").primaryKey(),
+    id: integer("id").notNull(),
     configuration: jsonb().$type<any>().default({}).notNull(),
     ptAddressId: integer("pt_address_id")
       .references(() => protocolsTable.id)
       .notNull(),
-  }
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.id, table.ptAddressId],
+    }),
+  ]
 );
 
 // Relation definitions for `.query` usage

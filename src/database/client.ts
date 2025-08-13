@@ -245,11 +245,22 @@ class Database {
         );
       }
 
-      await tx.insert(schema.virtualProviderOfferConfigurations).values({
-        id: params.offerId,
-        ptAddressId: protocol.id,
-        configuration: params.configuration,
-      });
+      await tx
+        .insert(schema.virtualProviderOfferConfigurations)
+        .values({
+          id: params.offerId,
+          ptAddressId: protocol.id,
+          configuration: params.configuration,
+        })
+        .onConflictDoUpdate({
+          target: [
+            schema.virtualProviderOfferConfigurations.id,
+            schema.virtualProviderOfferConfigurations.ptAddressId,
+          ],
+          set: {
+            configuration: params.configuration,
+          },
+        });
     });
   }
 
